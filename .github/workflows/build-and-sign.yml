@@ -44,9 +44,12 @@ jobs:
             --name TruiteRetranscription `
             --icon app/icon.ico `
             --add-data "app/logo.png;app" `
+            --add-data "app/web;web" `
             --collect-data tkinterdnd2 `
+            --collect-submodules uvicorn `
             --hidden-import tkinterdnd2 `
             --hidden-import tkinterdnd2.TkinterDnD `
+            --hidden-import python_multipart `
             --paths app app/main.py
 
       - name: Verifier l'executable

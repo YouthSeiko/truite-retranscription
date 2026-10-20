@@ -3,3 +3,7 @@ av<19
 customtkinter>=5.2.2
 tkinterdnd2>=0.3.0
 pillow>=10.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+qrcode>=7.4

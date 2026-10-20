@@ -19,6 +19,7 @@ if ($Clean) {
 }
 
 $LogoData = "{0};app" -f (Join-Path $Root "app\logo.png")
+$WebData = "{0};web" -f (Join-Path $Root "app\web")
 $pyArgs = @(
     "-m", "PyInstaller",
     "--noconfirm",
@@ -28,9 +29,12 @@ $pyArgs = @(
     "--name", "TruiteRetranscription",
     "--icon", (Join-Path $Root "app\icon.ico"),
     "--add-data", $LogoData,
+    "--add-data", $WebData,
     "--collect-data", "tkinterdnd2",
+    "--collect-submodules", "uvicorn",
     "--hidden-import", "tkinterdnd2",
     "--hidden-import", "tkinterdnd2.TkinterDnD",
+    "--hidden-import", "python_multipart",
     "--paths", (Join-Path $Root "app"),
     (Join-Path $Root "app\main.py")
 )

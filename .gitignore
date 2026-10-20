@@ -11,3 +11,5 @@ dist/
 TruiteRetranscription.exe
 TruiteRetranscription/
 *.zip
+remote_config.json
+remote_uploads/

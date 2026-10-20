@@ -57,6 +57,37 @@ Le workflow [`.github/workflows/build-and-sign.yml`](.github/workflows/build-and
 4. Définir les variables GitHub : `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_SIGNING_POLICY_SLUG`, `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG`.
 5. Pousser un tag `v*` (ou lancer le workflow manuellement) : build → signature → release.
 
+## Utilisation à distance (Mode distant)
+
+Le PC peut servir ses transcriptions à d'autres appareils (téléphone, tablette, autre PC) via une **page web intégrée** — aucun site externe, tout tourne dans l'application.
+
+### Activation
+
+1. Dans la fenêtre principale, cliquez sur **Mode distant**.
+2. Définissez le **mot de passe** d'accès (8 caractères minimum).
+3. Une fenêtre affiche le **QR code** et l'adresse à saisir depuis l'appareil distant.
+4. Si Windows bloque la connexion, cliquez sur **« Autoriser le port au pare-feu »** (validation UAC).
+
+Sur le même Wi-Fi : scannez le QR code avec l'appareil photo, connectez-vous, choisissez vos fichiers audio — la transcription se fait sur le PC (modèle IA local), le résultat se télécharge en .txt/.srt/.vtt.
+
+### Depuis l'extérieur de votre réseau
+
+**Recommandé — Tailscale (gratuit, aucun port ouvert) :**
+
+1. Installez [Tailscale](https://tailscale.com/download) sur ce PC et sur vos appareils, connectez-vous avec le même compte.
+2. L'appareil distant rejoint votre PC via l'adresse `http://100.x.y.z:8722` — automatiquement affichée dans la fenêtre Mode distant quand Tailscale est détecté.
+3. Tout le trafic reste chiffré (WireGuard) et le PC n'est jamais exposé sur Internet.
+
+**Alternative :** Cloudflare Tunnel ou port forwarding + DDNS (déconseillé sans HTTPS : le mot de passe transiterait en clair).
+
+> Le mode LAN fonctionne en HTTP : acceptable sur un réseau domestique fiable. Pour un accès via Internet, passez impérativement par Tailscale ou un tunnel HTTPS.
+
+### Sans interface graphique
+
+```bash
+TruiteRetranscription.exe serve --port 8722   # serveur seul (après activation du mot de passe)
+```
+
 ## Utilisation
 
 1. Glissez vos fichiers audio dans la fenêtre (ou bouton **+ Ajouter**).
@@ -88,6 +119,9 @@ retranscription/
 ├── app/
 │   ├── main.py             # interface graphique (customtkinter + glisser-déposer)
 │   ├── transcriber.py       # moteur de transcription (faster-whisper) + exports
+│   ├── jobs.py              # file de jobs partagée (local + distant)
+│   ├── server.py            # serveur web intégré (FastAPI, auth, WebSocket)
+│   ├── web/index.html       # page web mobile (embarquée dans l'exe)
 │   ├── warmup_model.py      # pré-téléchargement du modèle IA
 │   ├── make_icon.py         # génération de l'icône/logo (Pillow)
 │   └── requirements.txt

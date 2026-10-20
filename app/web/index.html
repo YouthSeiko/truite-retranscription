@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0A1929">
+<title>Truite Retranscription</title>
+<style>
+:root{--bg:#0A1929;--card:#122A42;--card2:#1B3A58;--line:#2A4D70;--text:#EAF6FF;--muted:#7FA8C9;--acc:#22B8CF;--accd:#1596AC;--ok:#2DD4A7;--err:#F87171;--warn:#FBBF24}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,-apple-system,sans-serif;min-height:100%}
+body{padding:14px;display:flex;justify-content:center}
+#app{width:100%;max-width:560px}
+.screen{display:none}
+.screen.on{display:block}
+.brand{display:flex;align-items:center;gap:12px;padding:8px 2px 18px}
+.brand img{width:48px;height:48px}
+.brand h1{font-size:22px;letter-spacing:.3px}
+.brand p{color:var(--muted);font-size:12.5px}
+.card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid #183754}
+.card h2{font-size:14px;margin-bottom:10px;color:var(--text)}
+label{display:block;font-size:12.5px;color:var(--muted);margin:10px 0 5px}
+input[type=password],input[type=text],select{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:12px 13px;font-size:16px;outline:none}
+input:focus,select:focus{border-color:var(--acc)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;background:var(--acc);color:#04212B;font-weight:600;font-size:15.5px;border:0;border-radius:10px;padding:13px;cursor:pointer;margin-top:14px}
+.btn:active{background:var(--accd)}
+.btn.sec{background:var(--card2);color:var(--text);border:1px solid var(--line)}
+.btn[disabled]{opacity:.45;pointer-events:none}
+.err{color:var(--err);font-size:13px;margin-top:9px;min-height:16px}
+.muted{color:var(--muted);font-size:12.5px;line-height:1.5}
+.setup{padding:26px 4px;text-align:center}
+.setup .ico{font-size:44px;margin-bottom:8px}
+.setup h2{font-size:18px;margin-bottom:10px}
+.filebox{background:var(--card2);border:1.5px dashed var(--line);border-radius:10px;padding:18px;text-align:center;color:var(--muted);font-size:13.5px;cursor:pointer}
+.filebox:active{border-color:var(--acc)}
+.filebox.has{border-style:solid;border-color:var(--acc);color:var(--text)}
+select{margin-top:6px}
+.row{display:flex;gap:10px}
+.row>div{flex:1}
+.upbar{height:7px;background:var(--card2);border-radius:99px;overflow:hidden;margin-top:12px;display:none}
+.upbar.on{display:block}
+.upbar i{display:block;height:100%;width:0;background:var(--acc);transition:width .18s}
+.job{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin-bottom:10px}
+.job .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.job .name{font-size:14.5px;font-weight:600;word-break:break-all}
+.badge{font-size:10.5px;padding:3px 8px;border-radius:99px;background:#0D2137;color:var(--muted);white-space:nowrap;border:1px solid var(--line)}
+.badge.run{color:var(--acc);border-color:var(--acc)}
+.badge.done{color:var(--ok);border-color:var(--ok)}
+.badge.err{color:var(--err);border-color:var(--err)}
+.badge.pc{color:#FBBF24;border-color:#FBBF24}
+.pbar{height:6px;background:#0D2137;border-radius:99px;overflow:hidden;margin-top:10px}
+.pbar i{display:block;height:100%;background:var(--acc);transition:width .3s}
+.dl{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
+.dl button{background:var(--bg);border:1px solid var(--line);color:var(--acc);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer}
+.dl button:active{background:var(--card)}
+.job .detail{font-size:12.5px;color:var(--muted);margin-top:9px;white-space:pre-wrap;max-height:130px;overflow:auto;line-height:1.45}
+.job .detail::-webkit-scrollbar{width:5px}
+.job .detail::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+.head{display:flex;justify-content:space-between;align-items:center;margin:4px 2px 10px}
+.head h2{font-size:15px}
+.head button{background:none;border:0;color:var(--muted);font-size:13px;cursor:pointer;padding:6px}
+.empty{color:var(--muted);font-size:13px;text-align:center;padding:14px 0}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:#0D2137;border:1px solid var(--line);color:var(--text);padding:11px 18px;border-radius:10px;font-size:13.5px;opacity:0;pointer-events:none;transition:opacity .25s;max-width:92vw;text-align:center}
+.toast.on{opacity:1}
+</style>
+</head>
+<body>
+<div id="app">
+
+<div id="s-setup" class="screen setup">
+  <div class="ico">&#128031;</div>
+  <h2>Mode distant non activé</h2>
+  <p class="muted">Ouvrez Truite Retranscription sur l'ordinateur, puis cliquez sur <b>Mode distant</b> et définissez un mot de passe.</p>
+</div>
+
+<div id="s-login" class="screen">
+  <div class="brand"><img src="/logo.png" alt=""><div><h1>Truite Retranscription</h1><p>Accès à distance — 100 % en local</p></div></div>
+  <div class="card">
+    <h2>Connexion</h2>
+    <label>Mot de passe</label>
+    <input type="password" id="pw" autocomplete="current-password" placeholder="••••••••">
+    <div class="err" id="login-err"></div>
+    <button class="btn" id="login-btn">Se connecter</button>
+    <p class="muted" style="margin-top:12px">Aucune donnée ne quitte ce réseau : le serveur tourne sur votre PC.</p>
+  </div>
+</div>
+
+<div id="s-app" class="screen">
+  <div class="brand">
+    <img src="/logo.png" alt="">
+    <div><h1>Truite Retranscription</h1><p id="host-label">Transcription via votre ordinateur</p></div>
+  </div>
+
+  <div class="card">
+    <h2>Nouvelle transcription</h2>
+    <div class="filebox" id="filebox">Touchez pour choisir des fichiers audio<input type="file" id="file" accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.opus,.aac,.mp4,.mkv,.webm" multiple hidden></div>
+    <div class="row" style="margin-top:12px">
+      <div><label>Modèle</label><select id="model"></select></div>
+      <div><label>Langue</label><select id="lang"></select></div>
+    </div>
+    <div class="upbar" id="upbar"><i id="upfill"></i></div>
+    <button class="btn" id="send" disabled>Envoyer et transcrire</button>
+  </div>
+
+  <div class="head"><h2>File de transcription</h2><button id="logout">Déconnexion</button></div>
+  <div id="jobs"><div class="empty">Aucun job pour le moment.</div></div>
+
+  <p class="muted" style="text-align:center;padding:10px 0 20px">Serveur local Truite Retranscription — hors ligne, hors nuage.</p>
+</div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let info = {ready:false, models:{}, languages:[]};
+let ws = null, poll = null, files = [];
+
+function toast(msg){
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("on");
+  clearTimeout(t._id);
+  t._id = setTimeout(()=>t.classList.remove("on"), 3200);
+}
+
+function show(id){
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("on"));
+  $(id).classList.add("on");
+}
+
+async function api(path, opts){
+  const res = await fetch(path, opts);
+  if(res.status === 401){ closeWs(); show("#s-login"); throw new Error("Session expiree"); }
+  if(!res.ok){
+    let detail = "";
+    try{ detail = (await res.json()).detail || ""; }catch(e){}
+    throw new Error(detail || "Erreur " + res.status);
+  }
+  return res;
+}
+
+async function loadInfo(){
+  info = await (await fetch("/api/info")).json();
+  if(!info.ready){ show("#s-setup"); return false; }
+  const modelSel = $("#model"), langSel = $("#lang");
+  modelSel.innerHTML = "";
+  for(const name in info.models){
+    const o = document.createElement("option");
+    o.value = name; o.textContent = name + " — " + info.models[name];
+    modelSel.appendChild(o);
+  }
+  modelSel.value = "small";
+  langSel.innerHTML = "";
+  for(const name of info.languages){
+    const o = document.createElement("option");
+    o.value = name; o.textContent = name;
+    langSel.appendChild(o);
+  }
+  return true;
+}
+
+async function init(){
+  try{
+    if(!await loadInfo()) return;
+    try{ await api("/api/state"); enterApp(); return; }catch(e){}
+    show("#s-login");
+  }catch(e){
+    toast("Serveur injoignable");
+    show("#s-login");
+  }
+}
+
+async function login(){
+  $("#login-err").textContent = "";
+  const btn = $("#login-btn");
+  btn.disabled = true;
+  try{
+    const res = await fetch("/api/login", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({password: $("#pw").value})
+    });
+    if(!res.ok){
+      const d = await res.json().catch(()=>({}));
+      $("#login-err").textContent = d.detail || "Connexion refusee";
+      return;
+    }
+    $("#pw").value = "";
+    enterApp();
+  }catch(e){
+    $("#login-err").textContent = "Serveur injoignable";
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function enterApp(){
+  show("#s-app");
+  refreshState();
+  connectWs();
+}
+
+function connectWs(){
+  closeWs();
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  try{
+    ws = new WebSocket(proto + "://" + location.host + "/ws");
+    ws.onmessage = ev => {
+      try{
+        const data = JSON.parse(ev.data);
+        if(data.type === "state") renderJobs(data.jobs);
+      }catch(e){}
+    };
+    ws.onclose = () => {
+      ws = null;
+      poll = setInterval(refreshState, 3000);
+    };
+    ws.onopen = () => { clearInterval(poll); poll = null; };
+  }catch(e){
+    poll = setInterval(refreshState, 3000);
+  }
+}
+
+function closeWs(){
+  clearInterval(poll);
+  poll = null;
+  if(ws){ try{ ws.close(); }catch(e){} ws = null; }
+}
+
+async function refreshState(){
+  try{
+    const res = await api("/api/state");
+    renderJobs((await res.json()).jobs || []);
+  }catch(e){}
+}
+
+const STATUS = {
+  queued: ["En file d'attente", ""],
+  running: ["En cours", "run"],
+  done: ["Terminé", "done"],
+  error: ["Erreur", "err"],
+  cancelled: ["Annulé", "err"]
+};
+
+function renderJobs(jobs){
+  const box = $("#jobs");
+  if(!jobs.length){ box.innerHTML = '<div class="empty">Aucun job pour le moment.</div>'; return; }
+  box.innerHTML = "";
+  for(const job of jobs){
+    const [label, cls] = STATUS[job.status] || [job.status, ""];
+    const el = document.createElement("div");
+    el.className = "job";
+    const count = job.count > 1 ? " · " + job.count + " fichiers" : "";
+    const origin = job.origin === "local" ? '<span class="badge pc">PC</span>' : "";
+    let mid = "";
+    if(job.status === "running" || job.status === "queued"){
+      mid = '<div class="pbar"><i style="width:' + Math.round(job.progress*100) + '%"></i></div>';
+    }
+    let dl = "";
+    if(job.status === "done"){
+      dl = '<div class="dl">' +
+        (job.formats.length ? job.formats : ["txt"]).map(f =>
+          '<button data-job="' + job.id + '" data-fmt="' + f + '">.' + f + '</button>').join("") +
+        '</div><div class="detail">' + escapeHtml(job.text) + '</div>';
+    }
+    if(job.status === "error" && job.error){
+      dl = '<div class="detail">' + escapeHtml(job.error.split("\n").slice(-2).join(" ")) + '</div>';
+    }
+    el.innerHTML =
+      '<div class="top"><div class="name">' + escapeHtml(job.filename) + count + '</div>' +
+      '<div style="display:flex;gap:6px">' + origin + '<span class="badge ' + cls + '">' + label +
+      (job.status === "running" ? " " + Math.round(job.progress*100) + "%" : "") + '</span></div></div>' +
+      mid + dl;
+    box.appendChild(el);
+  }
+  box.querySelectorAll(".dl button").forEach(b=>{
+    b.addEventListener("click", ()=>download(b.dataset.job, b.dataset.fmt));
+  });
+}
+
+function escapeHtml(s){
+  return String(s || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+async function download(jobId, fmt){
+  try{
+    const res = await api("/api/download/" + jobId + "/" + fmt);
+    const blob = await res.blob();
+    const cd = res.headers.get("Content-Disposition") || "";
+    const match = cd.match(/filename="?(.+?)"?$/);
+    const name = match ? match[1] : jobId + "." + fmt;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+  }catch(e){
+    toast(e.message || "Telechargement impossible");
+  }
+}
+
+function setFiles(list){
+  files = Array.from(list || []);
+  const box = $("#filebox");
+  if(files.length){
+    box.classList.add("has");
+    box.childNodes[0].textContent = files.length === 1 ? files[0].name : files.length + " fichiers choisis";
+    $("#send").disabled = false;
+  }else{
+    box.classList.remove("has");
+    box.childNodes[0].textContent = "Touchez pour choisir des fichiers audio";
+    $("#send").disabled = true;
+  }
+}
+
+async function sendFiles(){
+  if(!files.length) return;
+  const btn = $("#send");
+  const bar = $("#upbar");
+  const fill = $("#upfill");
+  btn.disabled = true;
+  bar.classList.add("on");
+  fill.style.width = "0%";
+  try{
+    for(let i = 0; i < files.length; i++){
+      const form = new FormData();
+      form.append("file", files[i]);
+      form.append("model", $("#model").value);
+      form.append("language", $("#lang").value);
+      const done = await xhrUpload(form, (p) => {
+        fill.style.width = (((i + p) / files.length) * 100) + "%";
+      });
+      if(!done) break;
+    }
+    fill.style.width = "100%";
+    setFiles([]);
+    toast("Envoyé ! La transcription démarre sur le PC.");
+    refreshState();
+  }catch(e){
+    toast(e.message || "Envoi impossible");
+  }finally{
+    btn.disabled = !files.length;
+    setTimeout(()=>bar.classList.remove("on"), 900);
+  }
+}
+
+function xhrUpload(form, onProgress){
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload");
+    xhr.upload.onprogress = e => { if(e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      if(xhr.status === 401){ show("#s-login"); reject(new Error("Session expiree")); return; }
+      if(xhr.status >= 400){
+        let detail = "Erreur " + xhr.status;
+        try{ detail = JSON.parse(xhr.responseText).detail || detail; }catch(e){}
+        reject(new Error(detail)); return;
+      }
+      resolve(true);
+    };
+    xhr.onerror = () => reject(new Error("Connexion perdue"));
+    xhr.send(form);
+  });
+}
+
+$("#login-btn").addEventListener("click", login);
+$("#pw").addEventListener("keydown", e => { if(e.key === "Enter") login(); });
+$("#filebox").addEventListener("click", () => $("#file").click());
+$("#file").addEventListener("change", e => setFiles(e.target.files));
+$("#send").addEventListener("click", sendFiles);
+$("#logout").addEventListener("click", async () => {
+  try{ await fetch("/api/logout", {method:"POST"}); }catch(e){}
+  closeWs();
+  show("#s-login");
+});
+
+init();
+</script>
+</body>
+</html>

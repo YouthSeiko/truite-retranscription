@@ -4,21 +4,18 @@ import json
 import os
 import queue
 import sys
-import threading
-import traceback
 from pathlib import Path
 
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
+from jobs import get_queue
 from transcriber import (
     AUDIO_EXTENSIONS,
     LANGUAGES,
     MODEL_SIZES,
     PROJECT_ROOT,
     Transcriber,
-    export_segments,
-    human_duration,
 )
 
 try:
@@ -86,11 +83,11 @@ class TruiteRetranscriptionApp(_Root):
             pass
 
         self.files: list[Path] = []
-        self.messages: queue.Queue = queue.Queue()
-        self.worker: threading.Thread | None = None
-        self.cancel_requested = False
-        self.transcriber: Transcriber | None = None
-        self.active_model: str | None = None
+        self.job_queue = get_queue()
+        self.messages: queue.Queue = self.job_queue.events
+        self.current_job_id: str | None = None
+        self.remote = None
+        self.remote_win = None
         self.last_result: str = ""
         self.last_sources: list[Path] = []
 
@@ -145,6 +142,18 @@ class TruiteRetranscriptionApp(_Root):
             text_color=MUTED,
             anchor="w",
         ).grid(row=1, column=1, sticky="w", pady=(0, 4))
+
+        self.remote_btn = ctk.CTkButton(
+            header,
+            text="Mode distant",
+            width=124, height=36,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color=CARD_ALT, hover_color="#2A4D70",
+            text_color=TEXT, border_width=1, border_color="#2A4D70",
+            corner_radius=10,
+            command=self.toggle_remote,
+        )
+        self.remote_btn.grid(row=0, column=2, rowspan=2, sticky="e", padx=(12, 0))
 
         files_card = ctk.CTkFrame(self, fg_color=CARD, corner_radius=14)
         files_card.grid(row=1, column=0, sticky="ew", padx=24, pady=8)
@@ -406,14 +415,14 @@ class TruiteRetranscriptionApp(_Root):
         self.messages.put(("log", message))
 
     def toggle_run(self) -> None:
-        if self.worker and self.worker.is_alive():
-            self.cancel_requested = True
+        current = self.job_queue.jobs.get(self.current_job_id) if self.current_job_id else None
+        if current is not None and current.active:
+            self.job_queue.cancel(current.id)
             self.run_btn.configure(state="disabled", text="Arret en cours...")
             return
         if not self.files:
             messagebox.showwarning(APP_NAME, "Ajoutez au moins un fichier audio.")
             return
-        self.cancel_requested = False
         self.last_result = ""
         self.last_sources = list(self.files)
         self.result_box.delete("1.0", "end")
@@ -425,63 +434,201 @@ class TruiteRetranscriptionApp(_Root):
         config["language"] = self.lang_var.get()
         config["auto_save"] = self.auto_save_var.get()
         save_config(config)
-        self.worker = threading.Thread(target=self._run_worker, daemon=True)
-        self.worker.start()
+        submitted = self.job_queue.submit(
+            list(self.files),
+            self.model_var.get(),
+            LANGUAGES.get(self.lang_var.get()),
+            self.auto_save_var.get(),
+            origin="local",
+        )
+        self.current_job_id = submitted.id
 
-    def _run_worker(self) -> None:
+    def toggle_remote(self) -> None:
+        from server import DEFAULT_PORT, RemoteServer, password_defined, set_password
+
+        if self.remote is not None:
+            self.remote.stop()
+            self.remote = None
+            self.remote_btn.configure(
+                text="Mode distant",
+                fg_color=CARD_ALT, hover_color="#2A4D70",
+                text_color=TEXT, border_width=1, border_color="#2A4D70",
+            )
+            if self.remote_win is not None:
+                try:
+                    self.remote_win.destroy()
+                except Exception:
+                    pass
+                self.remote_win = None
+            self._append_log("Mode distant desactive.")
+            return
+
+        if password_defined():
+            dialog = ctk.CTkInputDialog(
+                title=f"{APP_NAME} — Mode distant",
+                text="Nouveau mot de passe (laisser vide pour garder l'actuel) :",
+            )
+            password = (dialog.get_input() or "").strip()
+            if password and len(password) < 8:
+                messagebox.showwarning(APP_NAME, "Le mot de passe doit faire au moins 8 caracteres.")
+                return
+            if password:
+                set_password(password)
+        else:
+            dialog = ctk.CTkInputDialog(
+                title=f"{APP_NAME} — Mode distant",
+                text="Definition du mot de passe d'acces distant (8 caracteres minimum).\n"
+                "Vos appareils devront le saisir pour utiliser ce PC.",
+            )
+            password = (dialog.get_input() or "").strip()
+            if not password:
+                return
+            if len(password) < 8:
+                messagebox.showwarning(APP_NAME, "Le mot de passe doit faire au moins 8 caracteres.")
+                return
+            set_password(password)
+
+        server = RemoteServer(self.job_queue, DEFAULT_PORT)
         try:
-            model_name = self.model_var.get()
-            language = LANGUAGES.get(self.lang_var.get())
-            auto_save = self.auto_save_var.get()
+            server.start()
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, f"Impossible de demarrer le serveur distant.\n{exc}")
+            return
+        self.remote = server
+        self.remote_btn.configure(
+            text="Distant : actif",
+            fg_color=SUCCESS, hover_color="#25B491",
+            text_color="#04212B", border_width=0,
+        )
+        urls = server.urls()
+        self._append_log(f"Mode distant actif : {urls['lan']}")
+        self._show_remote_window()
 
-            if self.transcriber is None or self.active_model != model_name:
-                self.transcriber = Transcriber(model_name)
-                self.active_model = model_name
-            self.transcriber.load(on_status=lambda msg: self.messages.put(("status", msg)))
+    def _show_remote_window(self) -> None:
+        from server import open_firewall
 
-            texts: list[str] = []
-            total = len(self.files)
-            for index, path in enumerate(self.files, 1):
-                if self.cancel_requested:
-                    self.messages.put(("log", "Transcription annulee."))
-                    break
-                self.messages.put(("status", f"Fichier {index}/{total} : {path.name}"))
-                self.messages.put(("progress", (index - 1) / total))
+        server = self.remote
+        if server is None:
+            return
+        if self.remote_win is not None:
+            try:
+                self.remote_win.destroy()
+            except Exception:
+                pass
 
-                segments, info = self.transcriber.transcribe_file(
-                    path,
-                    language=language,
-                    on_progress=lambda value, i=index: self.messages.put(
-                        ("progress", (i - 1 + value) / total)
-                    ),
-                    should_cancel=lambda: self.cancel_requested,
-                )
-                text = "\n".join(seg.text for seg in segments if seg.text).strip()
-                texts.append(f"===== {path.name} =====\n\n{text if text else '(aucune parole detectee)'}")
-                self.messages.put(("progress", index / total))
+        win = ctk.CTkToplevel(self)
+        win.title(f"{APP_NAME} — Mode distant")
+        win.geometry("440x640")
+        win.minsize(440, 560)
+        win.configure(fg_color=BG)
+        win.transient(self)
+        self.remote_win = win
+        win.grid_columnconfigure(0, weight=1)
 
-                if auto_save:
-                    out_dir = path.parent / "transcriptions"
-                    written = export_segments(segments, path, out_dir, ["txt"])
-                    for item in written:
-                        self.messages.put(("log", f"Sauvegarde : {item}"))
+        urls = server.urls()
 
-                duration = float(getattr(info, "duration", 0) or 0)
-                self.messages.put(
-                    ("log", f"Termine : {path.name} ({human_duration(duration)})")
-                )
+        ctk.CTkLabel(
+            win, text="Mode distant actif",
+            font=ctk.CTkFont(size=20, weight="bold"), text_color=TEXT,
+        ).grid(row=0, column=0, pady=(22, 2), padx=24, sticky="w")
+        ctk.CTkLabel(
+            win,
+            text="Scannez le QR code ou saisissez l'adresse dans un navigateur.",
+            font=ctk.CTkFont(size=13), text_color=MUTED, wraplength=380, justify="left",
+        ).grid(row=1, column=0, padx=24, sticky="w")
 
-            if not self.cancel_requested:
-                self.last_result = "\n\n".join(texts)
-                self.messages.put(("result", self.last_result))
-                self.messages.put(("status", "Termine"))
-                self.messages.put(("log", "Transcription terminee avec succes."))
-            else:
-                self.messages.put(("status", "Annule"))
-            self.messages.put(("finished", None))
+        qr_image = self._make_qr_image(urls["lan"])
+        if qr_image:
+            qr_frame = ctk.CTkFrame(win, fg_color=CARD, corner_radius=14)
+            qr_frame.grid(row=2, column=0, padx=24, pady=16, sticky="ew")
+            qr_label = ctk.CTkLabel(qr_frame, image=qr_image, text="")
+            qr_label.image = qr_image
+            qr_label.pack(padx=20, pady=16)
+            ctk.CTkLabel(
+                qr_frame, text="Sur le meme Wi-Fi, scannez avec l'appareil photo.",
+                font=ctk.CTkFont(size=12), text_color=MUTED,
+            ).pack(pady=(0, 14))
+
+        links = ctk.CTkFrame(win, fg_color=CARD, corner_radius=14)
+        links.grid(row=3, column=0, padx=24, sticky="ew")
+        links.grid_columnconfigure(0, weight=1)
+
+        row = 0
+        for label_text, url in (("Reseau local", urls["lan"]), ("Tailscale", urls["tailscale"])):
+            if url is None:
+                continue
+            ctk.CTkLabel(
+                links, text=label_text, font=ctk.CTkFont(size=12, weight="bold"),
+                text_color=MUTED, anchor="w",
+            ).grid(row=row, column=0, padx=16, pady=(12 if row == 0 else 4, 0), sticky="w")
+            entry_row = ctk.CTkFrame(links, fg_color=CARD)
+            entry_row.grid(row=row + 1, column=0, padx=12, pady=4, sticky="ew")
+            entry_row.grid_columnconfigure(0, weight=1)
+            ctk.CTkLabel(
+                entry_row, text=url, font=ctk.CTkFont(family="Consolas", size=13),
+                text_color=ACCENT, anchor="w",
+            ).grid(row=0, column=0, sticky="w", padx=4)
+            ctk.CTkButton(
+                entry_row, text="Copier", width=76, height=28, fg_color=CARD_ALT,
+                hover_color="#2A4D70", text_color=TEXT, border_width=1,
+                border_color="#2A4D70",
+                command=lambda u=url: self._copy_text(u),
+            ).grid(row=0, column=1, padx=(6, 0))
+            row += 2
+
+        if urls["tailscale"] is None:
+            hint = ctk.CTkLabel(
+                links,
+                text="Hors de ce reseau ? Installez Tailscale (gratuit) sur ce PC\n"
+                "et vos appareils : aucun port a ouvrir, tout reste chiffre.",
+                font=ctk.CTkFont(size=11.5), text_color=MUTED, justify="left", wraplength=360,
+            )
+            hint.grid(row=row, column=0, padx=16, pady=(10, 4), sticky="w")
+
+        ctk.CTkButton(
+            win, text="Autoriser le port au pare-feu Windows", height=38,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color=ACCENT, hover_color=ACCENT_DARK, corner_radius=10,
+            command=lambda: self._open_firewall(server.port),
+        ).grid(row=4, column=0, padx=24, pady=(14, 4), sticky="ew")
+
+        self.remote_status = ctk.CTkLabel(
+            win,
+            text=f"Serveur actif sur le port {server.port} — arretez-le depuis la fenetre principale.",
+            font=ctk.CTkFont(size=11.5), text_color=MUTED, wraplength=380, justify="left",
+        )
+        self.remote_status.grid(row=5, column=0, padx=24, pady=(0, 18), sticky="w")
+
+    @staticmethod
+    def _make_qr_image(url: str, size: int = 176):
+        try:
+            import qrcode
+
+            qr = qrcode.QRCode(border=2, box_size=8)
+            qr.add_data(url)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="#0A1929", back_color="white").convert("RGB")
+            return ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
         except Exception:
-            self.messages.put(("error", traceback.format_exc()))
-            self.messages.put(("finished", None))
+            return None
+
+    def _copy_text(self, text: str) -> None:
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self._append_log(f"Adresse copiee : {text}")
+
+    def _open_firewall(self, port: int) -> None:
+        from server import open_firewall
+
+        try:
+            open_firewall(port)
+            self._append_log("Demande d'autorisation du pare-feu (UAC)...")
+            if self.remote_win is not None and hasattr(self, "remote_status"):
+                self.remote_status.configure(
+                    text="Autorisation demandee : validez la fenetre Windows (UAC)."
+                )
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, f"Impossible de modifier le pare-feu.\n{exc}")
 
     def _poll_messages(self) -> None:
         try:
@@ -569,6 +716,8 @@ def _cli(argv: list[str]) -> int:
     transcribe.add_argument("--model", default="small", choices=list(MODEL_SIZES.keys()))
     transcribe.add_argument("--language", default=None)
     transcribe.add_argument("--output", default=None, help="fichier .txt de sortie")
+    serve = sub.add_parser("serve", help="demarrer le serveur d'acces distant")
+    serve.add_argument("--port", type=int, default=None)
     args = parser.parse_args(argv)
 
     if args.command == "warmup":
@@ -589,6 +738,27 @@ def _cli(argv: list[str]) -> int:
         target = Path(args.output).expanduser().resolve() if args.output else source.with_suffix(".txt")
         target.write_text(text + "\n", encoding="utf-8")
         print(f"Ecrit : {target}")
+        return 0
+
+    if args.command == "serve":
+        import time as _time
+
+        from server import DEFAULT_PORT, RemoteServer, password_defined
+
+        if not password_defined():
+            print("Mode distant non active : definissez d'abord le mot de passe depuis la fenetre principale.")
+            return 1
+        server = RemoteServer(port=args.port or DEFAULT_PORT)
+        server.start()
+        urls = server.urls()
+        print(f"Serveur actif : {urls['lan']}")
+        if urls["tailscale"]:
+            print(f"Tailscale    : {urls['tailscale']}")
+        try:
+            while True:
+                _time.sleep(1)
+        except KeyboardInterrupt:
+            server.stop()
         return 0
 
     parser.print_help()
