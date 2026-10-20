@@ -13,3 +13,4 @@ TruiteRetranscription/
 *.zip
 remote_config.json
 remote_uploads/
+relay_config.json

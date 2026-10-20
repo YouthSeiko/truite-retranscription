@@ -88,6 +88,16 @@ Sur le même Wi-Fi : scannez le QR code avec l'appareil photo, connectez-vous, c
 TruiteRetranscription.exe serve --port 8722   # serveur seul (après activation du mot de passe)
 ```
 
+### Relais : faire transcrire par un autre PC
+
+Un PC faible peut **déléguer ses transcriptions à un PC plus puissant** de la maison (ou réciproquement) :
+
+1. Sur le **PC moteur** : activez le *Mode distant* (mot de passe) comme décrit ci-dessus.
+2. Sur le **PC client** : cliquez sur le bouton **Relais**, saisissez l'adresse du PC moteur (ex. `http://192.168.1.14:8722`) puis son mot de passe. Le bouton passe en « Relais : actif ».
+3. Désormais, tout fichier déposé sur le PC client (interface ou page web locale) est **envoyé au PC moteur** : la progression et le texte reviennent en temps réel, le fichier `.txt` est écrit localement sur le client. Le PC client ne charge jamais le modèle IA.
+
+Les deux PC peuvent faire tourner leur application en même temps. Le choix du **modèle et de la langue** reste celui du PC client (le PC moteur le téléchargera si nécessaire). Pour retirer le relais, recliquez sur le bouton *Relais*.
+
 ## Utilisation
 
 1. Glissez vos fichiers audio dans la fenêtre (ou bouton **+ Ajouter**).
@@ -121,6 +131,7 @@ retranscription/
 │   ├── transcriber.py       # moteur de transcription (faster-whisper) + exports
 │   ├── jobs.py              # file de jobs partagée (local + distant)
 │   ├── server.py            # serveur web intégré (FastAPI, auth, WebSocket)
+│   ├── relay.py             # relais vers un PC moteur (forward des jobs)
 │   ├── web/index.html       # page web mobile (embarquée dans l'exe)
 │   ├── warmup_model.py      # pré-téléchargement du modèle IA
 │   ├── make_icon.py         # génération de l'icône/logo (Pillow)
@@ -139,5 +150,8 @@ retranscription/
 - `.models/` : modèles IA téléchargés (supprimables à tout moment)
 - `transcriptions/` : fichiers texte générés (à côté des audios)
 - `config.json` : préférences (modèle, langue, options)
+- `remote_config.json` : mot de passe du mode distant (haché scrypt)
+- `relay_config.json` : adresse + mot de passe du relais (PC client uniquement)
+- `remote_uploads/` : copies reçues des appareils distants (supprimées après transcription)
 
-Aucune donnée n'est envoyée sur le réseau, à part le téléchargement initial des modèles IA.
+Aucune donnée n'est envoyée sur Internet, à part le téléchargement initial des modèles IA. Sur le réseau local, transitent les fichiers audio vers le PC moteur et le texte en retour.

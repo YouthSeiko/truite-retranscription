@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
+import relay
 from transcriber import PROJECT_ROOT, Transcriber, export_segments, human_duration
 
 QUEUED = "queued"
@@ -168,6 +169,10 @@ class JobQueue:
                 self._emit("finished", None, job)
 
     def _run(self, job: Job) -> None:
+        if relay.relay_active():
+            self._run_relay(job)
+            return
+
         job.status = RUNNING
         self._notify(job)
         self._emit("status", f"Preparation ({job.filename})...", job)
@@ -229,6 +234,122 @@ class JobQueue:
         self._emit("result", job.text, job)
         self._emit("status", "Termine", job)
         self._emit("log", "Transcription terminee avec succes.", job)
+
+    def _run_relay(self, job: Job) -> None:
+        config = relay.load_relay()
+        if config is None:
+            raise RuntimeError("Relais non configure.")
+        client = relay.RelayClient(config)
+        host = client.host
+        job.status = RUNNING
+        self._notify(job)
+        try:
+            self._emit("status", f"Connexion au serveur {host}...", job)
+            client.ping()
+            total = len(job.files)
+            texts: list[str] = []
+            for index, path in enumerate(job.files, 1):
+                if job.cancel_requested:
+                    job.status = CANCELLED
+                    self._emit("status", "Annule", job)
+                    return
+                self._emit("status", f"Envoi de {path.name} vers {host}...", job)
+                self._emit("progress", (index - 1) / total, job)
+
+                def on_upload(frac: float, i: int = index) -> None:
+                    job.progress = (i - 1 + frac * 0.1) / total
+                    self._emit("progress", job.progress, job)
+                    self._throttle_notify(job)
+
+                remote_id = client.upload(path, job.model, job.language or "", on_upload)
+                body = self._follow_remote(job, client, remote_id, index, total)
+                if body is None:
+                    job.status = CANCELLED
+                    return
+                texts.append(f"===== {path.name} =====\n\n{body}")
+                if job.auto_save:
+                    out_dir = self._out_dir(path)
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    target = self._unique(out_dir / f"{path.stem}.txt")
+                    target.write_text(body + ("\n" if body else ""), encoding="utf-8")
+                    job.out_files["txt"] = str(target)
+                    self._emit("log", f"Sauvegarde : {target}", job)
+                self._emit("progress", index / total, job)
+                self._emit("log", f"Transcription terminee sur {host} : {path.name}", job)
+            if job.cancel_requested:
+                job.status = CANCELLED
+                return
+            job.text = "\n\n".join(texts)
+            job.status = DONE
+            job.progress = 1.0
+            self._emit("result", job.text, job)
+            self._emit("status", "Termine", job)
+            self._emit("log", f"Transcription terminee via {host}.", job)
+        except Exception as exc:
+            job.status = ERROR
+            job.error = relay.error_text(exc, host)
+            self._emit("error", job.error, job)
+
+    def _follow_remote(
+        self, job: Job, client: "relay.RelayClient", remote_id: str, index: int, total: int
+    ) -> Optional[str]:
+        last_status = ""
+        while True:
+            if job.cancel_requested:
+                client.cancel(remote_id)
+                job.status = CANCELLED
+                self._emit("status", "Annule (le serveur distant arrete la transcription).", job)
+                return None
+            state = client.state()
+            remote = next(
+                (item for item in state.get("jobs", []) if item.get("id") == remote_id),
+                None,
+            )
+            if remote is None:
+                raise RuntimeError("Le serveur distant n'a plus ce travail en memoire.")
+            status = remote.get("status")
+            frac = float(remote.get("progress") or 0.0)
+            job.progress = (index - 1 + 0.1 + 0.9 * frac) / total
+            self._emit("progress", job.progress, job)
+            self._throttle_notify(job)
+            message = f"Transcription sur le serveur... {int(frac * 100)} %"
+            if status == RUNNING and message != last_status:
+                last_status = message
+                self._emit("status", message, job)
+            if status == DONE:
+                return self._relabel(client.download_text(remote_id))
+            if status == ERROR:
+                raise RuntimeError(remote.get("error") or "La transcription distant a echoue.")
+            if status == CANCELLED:
+                job.status = CANCELLED
+                self._emit("status", "Annule", job)
+                return None
+            time.sleep(1.5)
+
+    @staticmethod
+    def _relabel(raw: str) -> str:
+        body = raw
+        if body.startswith("====="):
+            _, _, rest = body.partition("\n")
+            body = rest.lstrip("\n")
+        return body.strip()
+
+    def _throttle_notify(self, job: Job) -> None:
+        now = time.time()
+        if now - self._last_progress_notify >= 0.25:
+            self._last_progress_notify = now
+            self._notify(job)
+
+    @staticmethod
+    def _unique(target: Path) -> Path:
+        if not target.exists():
+            return target
+        stem, suffix = target.stem, target.suffix
+        for number in range(1, 1000):
+            candidate = target.with_name(f"{stem} ({number}){suffix}")
+            if not candidate.exists():
+                return candidate
+        return target
 
     @staticmethod
     def _out_dir(path: Path) -> Path:

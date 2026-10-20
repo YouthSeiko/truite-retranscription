@@ -44,7 +44,7 @@ jobs:
             --name TruiteRetranscription `
             --icon app/icon.ico `
             --add-data "app/logo.png;app" `
-            --add-data "app/web;web" `
+            --add-data "app/web;app/web" `
             --collect-data tkinterdnd2 `
             --collect-submodules uvicorn `
             --hidden-import tkinterdnd2 `

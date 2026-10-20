@@ -19,7 +19,7 @@ if ($Clean) {
 }
 
 $LogoData = "{0};app" -f (Join-Path $Root "app\logo.png")
-$WebData = "{0};web" -f (Join-Path $Root "app\web")
+$WebData = "{0};app\web" -f (Join-Path $Root "app\web")
 $pyArgs = @(
     "-m", "PyInstaller",
     "--noconfirm",
@@ -52,7 +52,13 @@ if (-not (Test-Path (Join-Path $distDir "TruiteRetranscription.exe"))) {
     exit 1
 }
 
+Get-Process -Name "TruiteRetranscription" -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Seconds 1
 Remove-Item -Recurse -Force $outDir -ErrorAction SilentlyContinue
+if (Test-Path $outDir) {
+    Write-Host "Impossible de vider le dossier $outDir (fichier utilise ?)." -ForegroundColor Red
+    exit 1
+}
 Copy-Item -Recurse $distDir $outDir
 $size = [math]::Round((Get-ChildItem $outDir -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1)
 Write-Host ""

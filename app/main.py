@@ -155,6 +155,26 @@ class TruiteRetranscriptionApp(_Root):
         )
         self.remote_btn.grid(row=0, column=2, rowspan=2, sticky="e", padx=(12, 0))
 
+        from relay import relay_active
+
+        self.relay_btn = ctk.CTkButton(
+            header,
+            text="Relais",
+            width=104, height=36,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color=CARD_ALT, hover_color="#2A4D70",
+            text_color=TEXT, border_width=1, border_color="#2A4D70",
+            corner_radius=10,
+            command=self.toggle_relay,
+        )
+        self.relay_btn.grid(row=0, column=3, rowspan=2, sticky="e", padx=(12, 0))
+        if relay_active():
+            self.relay_btn.configure(
+                text="Relais : actif",
+                fg_color=SUCCESS, hover_color="#25B491",
+                text_color="#04212B", border_width=0,
+            )
+
         files_card = ctk.CTkFrame(self, fg_color=CARD, corner_radius=14)
         files_card.grid(row=1, column=0, sticky="ew", padx=24, pady=8)
         files_card.grid_columnconfigure(0, weight=1)
@@ -504,6 +524,60 @@ class TruiteRetranscriptionApp(_Root):
         self._append_log(f"Mode distant actif : {urls['lan']}")
         self._show_remote_window()
 
+    def toggle_relay(self) -> None:
+        from relay import RelayClient, clear_relay, load_relay, relay_active, save_relay
+
+        if relay_active():
+            config = load_relay() or {}
+            target = config.get("url", "")
+            if not messagebox.askyesno(APP_NAME, f"Retirer le relais vers\n{target} ?"):
+                return
+            clear_relay()
+            self.relay_btn.configure(
+                text="Relais",
+                fg_color=CARD_ALT, hover_color="#2A4D70",
+                text_color=TEXT, border_width=1, border_color="#2A4D70",
+            )
+            self._append_log("Relais retire : les transcriptions se feront a nouveau sur ce PC.")
+            return
+
+        dialog = ctk.CTkInputDialog(
+            title=f"{APP_NAME} — Relais",
+            text="Adresse du PC qui fera les transcriptions :\n"
+            "(ex. http://192.168.1.14:8722)",
+        )
+        url = (dialog.get_input() or "").strip()
+        if not url:
+            return
+        dialog = ctk.CTkInputDialog(
+            title=f"{APP_NAME} — Relais",
+            text="Mot de passe d'acces distant de ce PC :",
+        )
+        password = (dialog.get_input() or "").strip()
+        if not password:
+            return
+        config = save_relay(url, password)
+        try:
+            RelayClient(config).ping()
+        except Exception as exc:
+            clear_relay()
+            messagebox.showerror(
+                APP_NAME,
+                "Connexion au relais impossible.\n"
+                "Verifiez l'adresse, le mot de passe, et que Truite Retranscription\n"
+                "tourne sur ce PC avec le mode distant active.",
+            )
+            return
+        self.relay_btn.configure(
+            text="Relais : actif",
+            fg_color=SUCCESS, hover_color="#25B491",
+            text_color="#04212B", border_width=0,
+        )
+        self._append_log(
+            f"Relais actif vers {config['url']} : ce PC forward les fichiers, "
+            "l'autre PC transcrit."
+        )
+
     def _show_remote_window(self) -> None:
         from server import open_firewall
 
@@ -577,10 +651,22 @@ class TruiteRetranscriptionApp(_Root):
             row += 2
 
         if urls["tailscale"] is None:
+            from server import tailscale_installed
+
+            if tailscale_installed():
+                hint_text = (
+                    "Tailscale est installe mais non detecte sur ce PC : ouvrez\n"
+                    "l'application Tailscale, puis rouvrez cette fenetre\n"
+                    "(relancer le Mode distant)."
+                )
+            else:
+                hint_text = (
+                    "Hors de ce reseau ? Installez Tailscale (gratuit) sur ce PC\n"
+                    "et vos appareils : aucun port a ouvrir, tout reste chiffre."
+                )
             hint = ctk.CTkLabel(
                 links,
-                text="Hors de ce reseau ? Installez Tailscale (gratuit) sur ce PC\n"
-                "et vos appareils : aucun port a ouvrir, tout reste chiffre.",
+                text=hint_text,
                 font=ctk.CTkFont(size=11.5), text_color=MUTED, justify="left", wraplength=360,
             )
             hint.grid(row=row, column=0, padx=16, pady=(10, 4), sticky="w")
@@ -706,6 +792,10 @@ class TruiteRetranscriptionApp(_Root):
 
 def _cli(argv: list[str]) -> int:
     import argparse
+
+    from server import ensure_output_streams
+
+    ensure_output_streams()
 
     parser = argparse.ArgumentParser(prog=APP_NAME, add_help=True)
     sub = parser.add_subparsers(dest="command")

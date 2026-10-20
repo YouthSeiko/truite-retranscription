@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import secrets
 import socket
 import subprocess
@@ -102,17 +103,41 @@ def get_lan_ip() -> str:
 
 
 def get_tailscale_ip() -> str | None:
+    for command in (["tailscale", "ip", "-4"], ["tailscale", "status", "--self"]):
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    line = line.strip()
+                    if line.startswith("100."):
+                        return line.split()[0]
+        except Exception:
+            pass
+    return _tailscale_ip_from_ipconfig()
+
+
+def _tailscale_ip_from_ipconfig() -> str | None:
     try:
         result = subprocess.run(
-            ["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=3
+            ["ipconfig"], capture_output=True, text=True, timeout=5,
+            encoding="utf-8", errors="replace",
         )
-        if result.returncode == 0:
-            first = result.stdout.strip().splitlines()[0].strip()
-            if first.startswith("100."):
-                return first
+        for line in result.stdout.splitlines():
+            if "Adresse IPv4" in line or "IPv4 Address" in line:
+                ip = line.rsplit(":", 1)[-1].strip()
+                if ip.startswith("100."):
+                    return ip
     except Exception:
         pass
     return None
+
+
+def tailscale_installed() -> bool:
+    import shutil as _shutil
+
+    if _shutil.which("tailscale"):
+        return True
+    return Path(r"C:\Program Files\Tailscale\tailscale.exe").exists()
 
 
 def port_is_free(port: int) -> bool:
@@ -146,6 +171,12 @@ def _resource_dir() -> Path:
     return PROJECT_ROOT / "app"
 
 
+def ensure_output_streams() -> None:
+    for _name in ("stdout", "stderr"):
+        if getattr(sys, _name, None) is None:
+            setattr(sys, _name, open(os.devnull, "w", encoding="utf-8"))
+
+
 class RemoteServer:
     def __init__(self, queue: JobQueue | None = None, port: int = DEFAULT_PORT) -> None:
         self.queue = queue or get_queue()
@@ -160,12 +191,15 @@ class RemoteServer:
         self._app = self._build_app()
 
     def start(self) -> None:
+        ensure_output_streams()
         if self.running:
             return
         if not port_is_free(self.port):
             raise RuntimeError(f"Le port {self.port} est deja utilise.")
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         web_path = _resource_dir() / "web" / "index.html"
+        if not web_path.exists():
+            web_path = _resource_dir().parent / "web" / "index.html"
         self._html = web_path.read_text(encoding="utf-8") if web_path.exists() else "<h1>Page introuvable</h1>"
         if not self._subscribed:
             self.queue.subscribe(self._on_job_change)
@@ -335,6 +369,15 @@ class RemoteServer:
                 lang_key = None
             job = self.queue.submit([dest], model_name, lang_key, True, origin="remote")
             return job.public()
+
+        @app.post("/api/cancel/{job_id}")
+        async def cancel_job(job_id: str, token: str = Depends(require_session)) -> dict:
+            job = self.queue.jobs.get(job_id)
+            if job is None:
+                raise HTTPException(status_code=404, detail="Travail inconnu")
+            if job.active:
+                self.queue.cancel(job_id)
+            return {"ok": True}
 
         @app.get("/api/download/{job_id}/{fmt}")
         async def download(job_id: str, fmt: str, token: str = Depends(require_session)) -> Response:
