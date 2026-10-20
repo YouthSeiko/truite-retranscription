@@ -120,7 +120,7 @@ Pour livrer l'application à une tierce personne (ex. Gregre) déjà reliée à 
 .\build.ps1 -OfferUrl "http://192.168.1.14:8722" -OfferUser gregre -OfferPassword "********" -OfferLabel "Gregre"
 ```
 
-Le dossier construit contient alors un `offer.json` : au premier lancement, le bouton du header affiche **« Connexion sur Gregre »** (bleu) — un clic teste la connexion et le bouton passe en **« Gregre : actif »** (vert). Sans `offer.json`, le bouton *Relais* ouvre le dialogue manuel habituel.
+Le dossier construit contient alors un `offer.json` **à côté** de lui (à la racine du projet — l'exe congelé le lit dans son dossier parent, comme tous ses fichiers de config) ; livrez le dossier **avec** ce `offer.json`. Au premier lancement, le bouton du header affiche **« Connexion sur Gregre »** (bleu) — un clic teste la connexion et le bouton passe en **« Gregre : actif »** (vert). Sans `offer.json`, le bouton *Relais* ouvre le dialogue manuel habituel.
 
 > Utilisez de préférence les identifiants d'un **compte** dans l'offre : la transcription est alors soumise au quota. Le mot de passe global donne un accès administrateur illimité.
 
@@ -146,7 +146,7 @@ TruiteRetranscription.exe register --user gregre --password ****  # créer un co
 .\build.ps1            # construit le dossier TruiteRetranscription\ à la racine
 .\build.ps1 -Clean      # reconstruction complète
 .\build.ps1 -OfferUrl "http://192.168.1.14:8722" -OfferUser gregre -OfferPassword "********" -OfferLabel "Gregre"
-                        # idem + offer.json (bouton « Connexion sur Gregre »)
+                        # idem + offer.json à côté du dossier (bouton « Connexion sur Gregre »)
 ```
 
 Le dépôt contient aussi un workflow GitHub Actions (`Build & Sign`) qui construit, signe (si SignPath est configuré) et publie la release automatiquement à chaque tag `v*`.

@@ -71,8 +71,9 @@ if ($OfferUrl -and $OfferPassword) {
     }
     if ($OfferUser) { $offer.username = $OfferUser }
     $offer.label = $OfferLabel
-    $offer | ConvertTo-Json | Set-Content -Path (Join-Path $outDir "offer.json") -Encoding UTF8
-    Write-Host "  Offre ecrite : offer.json ($OfferLabel -> $OfferUrl)" -ForegroundColor Gray
+    $offerDir = Split-Path -Parent $outDir
+    $offer | ConvertTo-Json | Set-Content -Path (Join-Path $offerDir "offer.json") -Encoding UTF8
+    Write-Host "  Offre ecrite : $offerDir\offer.json ($OfferLabel -> $OfferUrl)" -ForegroundColor Gray
 }
 $size = [math]::Round((Get-ChildItem $outDir -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1)
 Write-Host ""
