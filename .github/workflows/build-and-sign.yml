@@ -119,6 +119,8 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       VERSION: ${{ needs.build.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Telecharger l'artefact signe (ou non signe)
         uses: actions/download-artifact@v4
         with:
@@ -141,6 +143,11 @@ jobs:
         run: |
           gh release view $env:VERSION 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $env:VERSION --title "Truite Retranscription $env:VERSION" --notes "Version $env:VERSION - transcription audio en local. Voir le README section antivirus en cas d'alerte."
+            $notesFile = "release-notes-$env:VERSION.md"
+            if (Test-Path $notesFile) {
+              gh release create $env:VERSION --title "Truite Retranscription $env:VERSION" --notes-file $notesFile
+            } else {
+              gh release create $env:VERSION --title "Truite Retranscription $env:VERSION" --notes "Version $env:VERSION - voir le README."
+            }
           }
           gh release upload $env:VERSION "${{ steps.pack.outputs.zip }}" --clobber
