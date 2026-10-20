@@ -13,11 +13,25 @@ from typing import Callable, Optional
 from urllib.parse import urlparse
 
 import relay
-from server import get_lan_ip, get_tailscale_ip
 from transcriber import PROJECT_ROOT, Transcriber, export_segments, human_duration
 
 
-def _relay_is_local(url: str) -> bool:
+def _get_lan_ip():
+    try:
+        from server import get_lan_ip
+
+        return get_lan_ip()
+    except Exception:
+        return None
+
+
+def _get_tailscale_ip():
+    try:
+        from server import get_tailscale_ip
+
+        return get_tailscale_ip()
+    except Exception:
+        return None
     try:
         parsed = urlparse(url)
         host = (parsed.hostname or "").strip().lower()
@@ -26,7 +40,7 @@ def _relay_is_local(url: str) -> bool:
         if host in ("127.0.0.1", "localhost", "::1", "[::1]"):
             return True
         local_ips = set()
-        for getter in (get_lan_ip, get_tailscale_ip):
+        for getter in (_get_lan_ip, _get_tailscale_ip):
             try:
                 ip = getter()
                 if ip:
