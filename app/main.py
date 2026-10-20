@@ -357,7 +357,7 @@ class TruiteRetranscriptionApp(_Root):
         ctk.CTkLabel(
             footer,
             text="Truite Retranscription",
-            font=ctk.CTkFont(size=11.5),
+            font=ctk.CTkFont(size=12),
             text_color=MUTED,
             anchor="e",
         ).grid(row=0, column=1, sticky="e")
@@ -834,8 +834,9 @@ class TruiteRetranscriptionApp(_Root):
             hint = ctk.CTkLabel(
                 links,
                 text=hint_text,
-                font=ctk.CTkFont(size=11.5), text_color=MUTED, justify="left", wraplength=360,
-            )
+            font=ctk.CTkFont(size=12),
+            text_color=MUTED, wraplength=360, justify="left",
+        )
             hint.grid(row=row, column=0, padx=16, pady=(10, 4), sticky="w")
 
         ctk.CTkButton(
@@ -848,7 +849,8 @@ class TruiteRetranscriptionApp(_Root):
         self.remote_status = ctk.CTkLabel(
             win,
             text=f"Serveur actif sur le port {server.port} — arretez-le depuis la fenetre principale.",
-            font=ctk.CTkFont(size=11.5), text_color=MUTED, wraplength=380, justify="left",
+            font=ctk.CTkFont(size=12),
+            text_color=MUTED, wraplength=380, justify="left",
         )
         self.remote_status.grid(row=6, column=0, padx=24, pady=(0, 18), sticky="w")
 
