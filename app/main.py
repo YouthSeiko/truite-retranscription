@@ -292,7 +292,9 @@ class TruiteRetranscriptionApp(_Root):
         self.status_label.grid(row=0, column=2, padx=(12, 0))
 
         result_card = ctk.CTkFrame(self, fg_color=CARD, corner_radius=14)
-        result_card.grid(row=4, column=0, sticky="nsew", padx=24, pady=8)
+        result_card.grid(row=4, column=0, sticky="nsew", padx=24, pady=(8, 6))
+        self.grid_rowconfigure(4, weight=1)
+        self.grid_rowconfigure(5, weight=0)
         result_card.grid_columnconfigure(0, weight=1)
         result_card.grid_rowconfigure(1, weight=1)
 
@@ -338,6 +340,27 @@ class TruiteRetranscriptionApp(_Root):
             state="disabled",
         )
         self.log_box.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 14))
+
+        footer = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
+        footer.grid(row=5, column=0, sticky="ew", padx=24, pady=(6, 12))
+        footer.grid_columnconfigure(1, weight=1)
+
+        self.relay_quota_label = ctk.CTkLabel(
+            footer,
+            text="",
+            font=ctk.CTkFont(size=12),
+            text_color=MUTED,
+            anchor="w",
+        )
+        self.relay_quota_label.grid(row=0, column=0, sticky="w")
+
+        ctk.CTkLabel(
+            footer,
+            text="Truite Retranscription",
+            font=ctk.CTkFont(size=11.5),
+            text_color=MUTED,
+            anchor="e",
+        ).grid(row=0, column=1, sticky="e")
 
     def _bind_drop(self) -> None:
         if not DND_AVAILABLE:
