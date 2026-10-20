@@ -31,15 +31,15 @@ except Exception:
 APP_NAME = "Truite Retranscription"
 CONFIG_PATH = PROJECT_ROOT / "config.json"
 
-ACCENT = "#3B8ED0"
-ACCENT_DARK = "#1F6AA5"
-BG = "#101418"
-CARD = "#1A1F26"
-CARD_ALT = "#222831"
-TEXT = "#E6EDF3"
-MUTED = "#8B949E"
-SUCCESS = "#3FB950"
-ERROR = "#F85149"
+ACCENT = "#22B8CF"
+ACCENT_DARK = "#1596AC"
+BG = "#0A1929"
+CARD = "#122A42"
+CARD_ALT = "#1B3A58"
+TEXT = "#EAF6FF"
+MUTED = "#7FA8C9"
+SUCCESS = "#2DD4A7"
+ERROR = "#F87171"
 
 
 def load_config() -> dict:
@@ -80,6 +80,10 @@ class TruiteRetranscriptionApp(_Root):
         self.geometry("880x760")
         self.minsize(760, 640)
         self.configure(fg_color=BG)
+        try:
+            self.iconbitmap(str(PROJECT_ROOT / "app" / "icon.ico"))
+        except Exception:
+            pass
 
         self.files: list[Path] = []
         self.messages: queue.Queue = queue.Queue()
@@ -105,7 +109,23 @@ class TruiteRetranscriptionApp(_Root):
 
         header = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
         header.grid(row=0, column=0, sticky="ew", padx=24, pady=(22, 6))
-        header.grid_columnconfigure(0, weight=1)
+        header.grid_columnconfigure(1, weight=1)
+
+        logo_path = PROJECT_ROOT / "app" / "logo.png"
+        if logo_path.exists():
+            try:
+                from PIL import Image as PILImage
+
+                logo = ctk.CTkImage(
+                    light_image=PILImage.open(logo_path),
+                    dark_image=PILImage.open(logo_path),
+                    size=(56, 56),
+                )
+                ctk.CTkLabel(header, image=logo, text="").grid(
+                    row=0, column=0, rowspan=2, padx=(0, 14)
+                )
+            except Exception:
+                pass
 
         ctk.CTkLabel(
             header,
@@ -113,14 +133,14 @@ class TruiteRetranscriptionApp(_Root):
             font=ctk.CTkFont(family="Segoe UI", size=30, weight="bold"),
             text_color=TEXT,
             anchor="w",
-        ).grid(row=0, column=0, sticky="w")
+        ).grid(row=0, column=1, sticky="w")
         ctk.CTkLabel(
             header,
             text="Transcription audio vers texte, entierement en local",
             font=ctk.CTkFont(family="Segoe UI", size=14),
             text_color=MUTED,
             anchor="w",
-        ).grid(row=1, column=0, sticky="w", pady=(0, 4))
+        ).grid(row=1, column=1, sticky="w", pady=(0, 4))
 
         files_card = ctk.CTkFrame(self, fg_color=CARD, corner_radius=14)
         files_card.grid(row=1, column=0, sticky="ew", padx=24, pady=8)
@@ -145,13 +165,13 @@ class TruiteRetranscriptionApp(_Root):
         ).grid(row=0, column=1, padx=(8, 0))
         ctk.CTkButton(
             files_head, text="Vider", width=70, height=32,
-            fg_color=CARD_ALT, hover_color="#2C333D", text_color=MUTED,
-            border_width=1, border_color="#2C333D", command=self.clear_files,
+            fg_color=CARD_ALT, hover_color="#2A4D70", text_color=MUTED,
+            border_width=1, border_color="#2A4D70", command=self.clear_files,
         ).grid(row=0, column=2, padx=(8, 0))
 
         self.drop_zone = ctk.CTkFrame(
             files_card, fg_color=CARD_ALT, corner_radius=10,
-            border_width=1, border_color="#2C333D",
+            border_width=1, border_color="#2A4D70",
         )
         self.drop_zone.grid(row=1, column=0, sticky="ew", padx=16, pady=(4, 6))
         self.drop_zone.grid_columnconfigure(0, weight=1)
@@ -167,7 +187,7 @@ class TruiteRetranscriptionApp(_Root):
         self.file_list = ctk.CTkTextbox(
             files_card, height=96, fg_color=CARD_ALT,
             text_color=TEXT, font=ctk.CTkFont(family="Consolas", size=12),
-            corner_radius=10, border_width=1, border_color="#2C333D",
+            corner_radius=10, border_width=1, border_color="#2A4D70",
             state="disabled",
         )
         self.file_list.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 14))
@@ -260,32 +280,32 @@ class TruiteRetranscriptionApp(_Root):
         btns.grid(row=0, column=1, sticky="e")
         ctk.CTkButton(
             btns, text="Copier", width=76, height=30, fg_color=CARD_ALT,
-            hover_color="#2C333D", text_color=TEXT, border_width=1,
-            border_color="#2C333D", command=self.copy_result,
+            hover_color="#2A4D70", text_color=TEXT, border_width=1,
+            border_color="#2A4D70", command=self.copy_result,
         ).pack(side="left", padx=(0, 6))
         ctk.CTkButton(
             btns, text="Enregistrer", width=96, height=30, fg_color=CARD_ALT,
-            hover_color="#2C333D", text_color=TEXT, border_width=1,
-            border_color="#2C333D", command=self.save_result,
+            hover_color="#2A4D70", text_color=TEXT, border_width=1,
+            border_color="#2A4D70", command=self.save_result,
         ).pack(side="left", padx=(0, 6))
         ctk.CTkButton(
             btns, text="Ouvrir le dossier", width=120, height=30, fg_color=CARD_ALT,
-            hover_color="#2C333D", text_color=TEXT, border_width=1,
-            border_color="#2C333D", command=self.open_output_folder,
+            hover_color="#2A4D70", text_color=TEXT, border_width=1,
+            border_color="#2A4D70", command=self.open_output_folder,
         ).pack(side="left")
 
         self.result_box = ctk.CTkTextbox(
             result_card, fg_color=CARD_ALT, text_color=TEXT,
             font=ctk.CTkFont(family="Segoe UI", size=13),
-            corner_radius=10, border_width=1, border_color="#2C333D",
+            corner_radius=10, border_width=1, border_color="#2A4D70",
             wrap="word",
         )
         self.result_box.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 6))
 
         self.log_box = ctk.CTkTextbox(
-            result_card, height=76, fg_color="#14181E",
+            result_card, height=76, fg_color="#0D2137",
             text_color=MUTED, font=ctk.CTkFont(family="Consolas", size=11),
-            corner_radius=8, border_width=1, border_color="#2C333D",
+            corner_radius=8, border_width=1, border_color="#2A4D70",
             state="disabled",
         )
         self.log_box.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 14))
