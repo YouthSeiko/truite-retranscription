@@ -1,6 +1,6 @@
-# ReTranscription - Installateur local
+# Truite Retranscription - Installateur local
 # Deux modes :
-#   - ReTranscription.exe present -> rien d'autre a preparer que le modele IA + raccourcis
+#   - TruiteRetranscription.exe present -> rien d'autre a preparer que le modele IA + raccourcis
 #   - Sinon, si Python est present -> environnement virtuel + dependances + modele
 
 param(
@@ -11,11 +11,12 @@ param(
 $ErrorActionPreference = "Continue"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Exe = Join-Path $Root "ReTranscription.exe"
+$Exe = Join-Path $Root "TruiteRetranscription.exe"
 $Venv = Join-Path $Root ".venv"
 $VenvPython = Join-Path $Venv "Scripts\python.exe"
 $Requirements = Join-Path $Root "app\requirements.txt"
 $ModelsDir = Join-Path $Root ".models"
+$ShortcutName = "Truite Retranscription"
 
 function Write-Step($text) {
     Write-Host ""
@@ -24,7 +25,7 @@ function Write-Step($text) {
 
 function Get-Target {
     if (Test-Path $script:Exe) { return $script:Exe }
-    return (Join-Path $script:Root "Lancer ReTranscription.bat")
+    return (Join-Path $script:Root "Lancer Truite Retranscription.bat")
 }
 
 function Install-Shortcuts($target) {
@@ -37,7 +38,7 @@ function Install-Shortcuts($target) {
         $shell = New-Object -ComObject WScript.Shell
         foreach ($dir in @($desktop, $programs)) {
             if (-not $dir) { continue }
-            $lnk = $shell.CreateShortcut((Join-Path $dir "ReTranscription.lnk"))
+            $lnk = $shell.CreateShortcut((Join-Path $dir "$ShortcutName.lnk"))
             $lnk.TargetPath = $target
             $lnk.WorkingDirectory = $Root
             $lnk.Description = "Transcription audio -> texte, en local"
@@ -49,7 +50,20 @@ function Install-Shortcuts($target) {
         Write-Host "  Raccourcis non crees : $($_.Exception.Message)" -ForegroundColor Yellow
     }
     if ($created -gt 0) {
-        Write-Host "  Bureau + Menu Demarrer : ReTranscription" -ForegroundColor Gray
+        Write-Host "  Bureau + Menu Demarrer : $ShortcutName" -ForegroundColor Gray
+    }
+}
+
+function Remove-OldShortcuts {
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    $programs = [Environment]::GetFolderPath("Programs")
+    foreach ($dir in @($desktop, $programs)) {
+        if (-not $dir) { continue }
+        $old = Join-Path $dir "ReTranscription.lnk"
+        if (Test-Path $old) {
+            Remove-Item -Force $old -ErrorAction SilentlyContinue
+            Write-Host "  Ancien raccourci retire : $old" -ForegroundColor Gray
+        }
     }
 }
 
@@ -60,7 +74,7 @@ function Get-ModelReady {
 }
 
 Write-Host ""
-Write-Host "  ReTranscription - Installation" -ForegroundColor Green
+Write-Host "  $ShortcutName - Installation" -ForegroundColor Green
 Write-Host "  Transcription audio -> texte, 100% en local" -ForegroundColor Green
 Write-Host ""
 
@@ -69,7 +83,7 @@ $python = Get-Command python -ErrorAction SilentlyContinue
 $useVenv = $false
 
 if ($hasExe) {
-    Write-Step "Programme detecte : ReTranscription.exe"
+    Write-Step "Programme detecte : TruiteRetranscription.exe"
     Write-Host "  Aucun Python requis pour l'utilisation." -ForegroundColor Gray
 } elseif ($python) {
     $useVenv = $true
@@ -99,7 +113,7 @@ if ($hasExe) {
     }
     Write-Host "  OK" -ForegroundColor Gray
 } else {
-    Write-Host "Ni ReTranscription.exe, ni Python 3.10+ n'ont ete trouves." -ForegroundColor Red
+    Write-Host "Ni TruiteRetranscription.exe, ni Python 3.10+ n'ont ete trouves." -ForegroundColor Red
     Write-Host "Telechargez la version avec executable, ou installez Python depuis" -ForegroundColor Yellow
     Write-Host "https://www.python.org/downloads/ (cochez 'Add python.exe to PATH')." -ForegroundColor Yellow
     exit 1
@@ -128,6 +142,7 @@ if (Get-ModelReady) {
 
 $target = Get-Target
 Install-Shortcuts $target
+Remove-OldShortcuts
 
 Write-Host ""
 Write-Host "  Installation terminee." -ForegroundColor Green

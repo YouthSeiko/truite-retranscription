@@ -1,8 +1,8 @@
 @echo off
-title ReTranscription
+title Truite Retranscription
 cd /d "%~dp0"
-if exist "ReTranscription.exe" (
-    start "" "ReTranscription.exe"
+if exist "TruiteRetranscription.exe" (
+    start "" "TruiteRetranscription.exe"
     exit /b 0
 )
 if exist ".venv\Scripts\pythonw.exe" (

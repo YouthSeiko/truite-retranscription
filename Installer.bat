@@ -1,5 +1,5 @@
 @echo off
-title ReTranscription - Installation
+title Truite Retranscription - Installation
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
 if errorlevel 1 (
     echo.

@@ -28,7 +28,7 @@ try:
 except Exception:
     DND_AVAILABLE = False
 
-APP_NAME = "ReTranscription"
+APP_NAME = "Truite Retranscription"
 CONFIG_PATH = PROJECT_ROOT / "config.json"
 
 ACCENT = "#3B8ED0"
@@ -70,7 +70,7 @@ else:
     _Root = ctk.CTk
 
 
-class ReTranscriptionApp(_Root):
+class TruiteRetranscriptionApp(_Root):
     def __init__(self) -> None:
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
@@ -574,7 +574,7 @@ def _cli(argv: list[str]) -> int:
 def main() -> None:
     if len(sys.argv) > 1:
         raise SystemExit(_cli(sys.argv[1:]))
-    app = ReTranscriptionApp()
+    app = TruiteRetranscriptionApp()
     app.mainloop()
 
 

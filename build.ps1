@@ -1,4 +1,4 @@
-# ReTranscription - Construction de ReTranscription.exe
+# Truite Retranscription - Construction de TruiteRetranscription.exe
 param(
     [switch]$Clean
 )
@@ -12,7 +12,7 @@ if (-not (Test-Path $VenvPython)) {
     exit 1
 }
 
-& $VenvPython -m pip install --quiet pyinstaller
+& $VenvPython -m pip install --quiet pyinstaller pillow
 
 $pyArgs = @(
     "-m", "PyInstaller",
@@ -20,7 +20,7 @@ $pyArgs = @(
     "--clean",
     "--onefile",
     "--windowed",
-    "--name", "ReTranscription",
+    "--name", "TruiteRetranscription",
     "--icon", (Join-Path $Root "app\icon.ico"),
     "--collect-data", "tkinterdnd2",
     "--hidden-import", "tkinterdnd2",
@@ -39,12 +39,12 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-$exe = Join-Path $Root "dist\ReTranscription.exe"
+$exe = Join-Path $Root "dist\TruiteRetranscription.exe"
 if (Test-Path $exe) {
-    Copy-Item -Force $exe (Join-Path $Root "ReTranscription.exe")
-    $size = [math]::Round((Get-Item (Join-Path $Root "ReTranscription.exe")).Length / 1MB, 1)
+    Copy-Item -Force $exe (Join-Path $Root "TruiteRetranscription.exe")
+    $size = [math]::Round((Get-Item (Join-Path $Root "TruiteRetranscription.exe")).Length / 1MB, 1)
     Write-Host ""
-    Write-Host "  Build OK : ReTranscription.exe ($size Mo)" -ForegroundColor Green
+    Write-Host "  Build OK : TruiteRetranscription.exe ($size Mo)" -ForegroundColor Green
     Write-Host "  Copie a la racine du projet, prete pour l'installateur." -ForegroundColor Gray
     Write-Host ""
 } else {

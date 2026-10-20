@@ -1,4 +1,4 @@
-# ReTranscription
+# Truite Retranscription
 
 **Transcription audio → texte, 100 % en local.**  
 Glissez un fichier MP3, obtenez un fichier TXT/SRT/VTT. Aucun envoi sur Internet : tout se passe sur votre machine.
@@ -18,7 +18,7 @@ Glissez un fichier MP3, obtenez un fichier TXT/SRT/VTT. Aucun envoi sur Internet
 
 ### Avec l'exécutable (recommandé)
 
-1. Récupérez `ReTranscription.exe` à la racine du projet (ou construisez-le, voir plus bas).
+1. Récupérez `TruiteRetranscription.exe` à la racine du projet (ou construisez-le, voir plus bas).
 2. Double-cliquez sur **`Installer.bat`**.
 3. L'installateur télécharge le modèle IA (~460 Mo, une seule fois), crée les raccourcis **Bureau** et **Menu Démarrer**, puis lance le programme.
 
@@ -39,15 +39,15 @@ Prérequis : [Python 3.10+](https://www.python.org/downloads/) avec « Add pytho
 ### Mode ligne de commande
 
 ```bash
-ReTranscription.exe transcribe mon_audio.mp3              # écrit mon_audio.txt
-ReTranscription.exe transcribe mon_audio.mp3 --model tiny --language fr
-ReTranscription.exe warmup --model small                  # pré-télécharger un modèle
+TruiteRetranscription.exe transcribe mon_audio.mp3              # écrit mon_audio.txt
+TruiteRetranscription.exe transcribe mon_audio.mp3 --model tiny --language fr
+TruiteRetranscription.exe warmup --model small                  # pré-télécharger un modèle
 ```
 
 ## Construction de l'exécutable
 
 ```powershell
-.\build.ps1            # construit dist\ReTranscription.exe puis le copie à la racine
+.\build.ps1            # construit dist\TruiteRetranscription.exe puis le copie à la racine
 .\build.ps1 -Clean      # reconstruction complète
 ```
 
@@ -62,9 +62,9 @@ retranscription/
 │   └── requirements.txt
 ├── Installer.bat           # installateur (double-clic)
 ├── install.ps1             # logique d'installation
-├── build.ps1               # construction de ReTranscription.exe
-├── Lancer ReTranscription.bat
-└── ReTranscription.exe     # exécutable autonome (généré)
+├── build.ps1               # construction de TruiteRetranscription.exe
+├── Lancer Truite Retranscription.bat
+└── TruiteRetranscription.exe  # exécutable autonome (généré)
 ```
 
 ## Données locales
