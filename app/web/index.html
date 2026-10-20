@@ -77,10 +77,13 @@ select{margin-top:6px}
   <div class="brand"><img src="/logo.png" alt=""><div><h1>Truite Retranscription</h1><p>Accès à distance — 100 % en local</p></div></div>
   <div class="card">
     <h2>Connexion</h2>
+    <label>Pseudo</label>
+    <input type="text" id="user" autocomplete="username" placeholder="Votre pseudo (vide = administrateur)">
     <label>Mot de passe</label>
     <input type="password" id="pw" autocomplete="current-password" placeholder="••••••••">
     <div class="err" id="login-err"></div>
     <button class="btn" id="login-btn">Se connecter</button>
+    <button class="btn sec" id="reg-btn">Créer un compte</button>
     <p class="muted" style="margin-top:12px">Aucune donnée ne quitte ce réseau : le serveur tourne sur votre PC.</p>
   </div>
 </div>
@@ -102,8 +105,17 @@ select{margin-top:6px}
     <button class="btn" id="send" disabled>Envoyer et transcrire</button>
   </div>
 
-  <div class="head"><h2>File de transcription</h2><button id="logout">Déconnexion</button></div>
+  <div class="head">
+    <h2>File de transcription</h2>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span id="quota" class="badge run" style="display:none"></span>
+      <button id="logout">Déconnexion</button>
+    </div>
+  </div>
   <div id="jobs"><div class="empty">Aucun job pour le moment.</div></div>
+
+  <div class="head" id="acc-head" style="display:none"><h2>Comptes</h2></div>
+  <div id="accounts" style="display:none"></div>
 
   <p class="muted" style="text-align:center;padding:10px 0 20px">Serveur local Truite Retranscription — hors ligne, hors nuage.</p>
 </div>
@@ -115,6 +127,7 @@ select{margin-top:6px}
 const $ = s => document.querySelector(s);
 let info = {ready:false, models:{}, languages:[]};
 let ws = null, poll = null, files = [];
+let quota = null;
 
 function toast(msg){
   const t = $("#toast");
@@ -179,15 +192,46 @@ async function login(){
     const res = await fetch("/api/login", {
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({password: $("#pw").value})
+      body: JSON.stringify({password: $("#pw").value, username: $("#user").value.trim()})
     });
     if(!res.ok){
       const d = await res.json().catch(()=>({}));
       $("#login-err").textContent = d.detail || "Connexion refusee";
       return;
     }
+    const data = await res.json().catch(()=>({}));
+    quota = data.quota || null;
     $("#pw").value = "";
     enterApp();
+  }catch(e){
+    $("#login-err").textContent = "Serveur injoignable";
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+async function register(){
+  $("#login-err").textContent = "";
+  const user = $("#user").value.trim();
+  if(!user){
+    $("#login-err").textContent = "Indiquez un pseudo pour creer un compte.";
+    return;
+  }
+  const btn = $("#reg-btn");
+  btn.disabled = true;
+  try{
+    const res = await fetch("/api/register", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({username: user, password: $("#pw").value})
+    });
+    if(!res.ok){
+      const d = await res.json().catch(()=>({}));
+      $("#login-err").textContent = d.detail || "Creation refusee";
+      return;
+    }
+    toast("Compte cree !");
+    await login();
   }catch(e){
     $("#login-err").textContent = "Serveur injoignable";
   }finally{
@@ -209,7 +253,7 @@ function connectWs(){
     ws.onmessage = ev => {
       try{
         const data = JSON.parse(ev.data);
-        if(data.type === "state") renderJobs(data.jobs);
+        if(data.type === "state"){ renderJobs(data.jobs); renderMeta(data); }
       }catch(e){}
     };
     ws.onclose = () => {
@@ -231,8 +275,36 @@ function closeWs(){
 async function refreshState(){
   try{
     const res = await api("/api/state");
-    renderJobs((await res.json()).jobs || []);
+    const data = await res.json();
+    renderJobs(data.jobs || []);
+    renderMeta(data);
   }catch(e){}
+}
+
+function renderMeta(data){
+  if(data.quota !== undefined) quota = data.quota;
+  const badge = $("#quota");
+  if(quota){
+    badge.style.display = "";
+    badge.textContent = Math.floor(quota.credit) + " / " + quota.max + " min";
+  }else{
+    badge.style.display = "none";
+  }
+  const head = $("#acc-head"), box = $("#accounts");
+  if(Array.isArray(data.accounts)){
+    head.style.display = "";
+    box.style.display = "";
+    box.innerHTML = data.accounts.length
+      ? data.accounts.map(a =>
+          '<div class="job"><div class="top"><div class="name">' + escapeHtml(a.user) +
+          '</div><span class="badge run">' + Math.floor(a.credit) + " / " + a.max +
+          ' min</span></div></div>'
+        ).join("")
+      : '<div class="empty">Aucun compte cree pour le moment.</div>';
+  }else{
+    head.style.display = "none";
+    box.style.display = "none";
+  }
 }
 
 const STATUS = {
@@ -367,6 +439,8 @@ function xhrUpload(form, onProgress){
 }
 
 $("#login-btn").addEventListener("click", login);
+$("#reg-btn").addEventListener("click", register);
+$("#user").addEventListener("keydown", e => { if(e.key === "Enter") login(); });
 $("#pw").addEventListener("keydown", e => { if(e.key === "Enter") login(); });
 $("#filebox").addEventListener("click", () => $("#file").click());
 $("#file").addEventListener("change", e => setFiles(e.target.files));
@@ -374,6 +448,7 @@ $("#send").addEventListener("click", sendFiles);
 $("#logout").addEventListener("click", async () => {
   try{ await fetch("/api/logout", {method:"POST"}); }catch(e){}
   closeWs();
+  quota = null;
   show("#s-login");
 });
 

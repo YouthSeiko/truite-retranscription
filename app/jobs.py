@@ -35,6 +35,8 @@ class Job:
     out_files: dict[str, str] = field(default_factory=dict)
     created: float = field(default_factory=time.time)
     cancel_requested: bool = False
+    owner: str = ""
+    duration: float = 0.0
 
     @property
     def active(self) -> bool:
@@ -52,6 +54,7 @@ class Job:
             "error": self.error,
             "count": len(self.files),
             "formats": sorted(self.out_files.keys()),
+            "duration": round(self.duration, 1),
         }
 
 
@@ -81,6 +84,7 @@ class JobQueue:
         language: Optional[str],
         auto_save: bool,
         origin: str = "local",
+        owner: str = "",
     ) -> Job:
         files = [Path(f) for f in files]
         name = files[0].name if len(files) == 1 else f"{len(files)} fichiers"
@@ -92,6 +96,7 @@ class JobQueue:
             language=language,
             auto_save=auto_save,
             origin=origin,
+            owner=owner,
         )
         self.jobs[job.id] = job
         self._trim()
@@ -222,6 +227,7 @@ class JobQueue:
                     self._emit("log", f"Sauvegarde : {item}", job)
 
             duration = float(getattr(info, "duration", 0) or 0)
+            job.duration += duration
             self._emit("log", f"Termine : {path.name} ({human_duration(duration)})", job)
 
         if job.cancel_requested:

@@ -155,8 +155,6 @@ class TruiteRetranscriptionApp(_Root):
         )
         self.remote_btn.grid(row=0, column=2, rowspan=2, sticky="e", padx=(12, 0))
 
-        from relay import relay_active
-
         self.relay_btn = ctk.CTkButton(
             header,
             text="Relais",
@@ -168,12 +166,7 @@ class TruiteRetranscriptionApp(_Root):
             command=self.toggle_relay,
         )
         self.relay_btn.grid(row=0, column=3, rowspan=2, sticky="e", padx=(12, 0))
-        if relay_active():
-            self.relay_btn.configure(
-                text="Relais : actif",
-                fg_color=SUCCESS, hover_color="#25B491",
-                text_color="#04212B", border_width=0,
-            )
+        self._sync_relay_button()
 
         files_card = ctk.CTkFrame(self, fg_color=CARD, corner_radius=14)
         files_card.grid(row=1, column=0, sticky="ew", padx=24, pady=8)
@@ -524,21 +517,87 @@ class TruiteRetranscriptionApp(_Root):
         self._append_log(f"Mode distant actif : {urls['lan']}")
         self._show_remote_window()
 
+    def _sync_relay_button(self) -> None:
+        from relay import load_offer, load_relay, relay_active
+
+        if relay_active():
+            label = str((load_relay() or {}).get("label", "")).strip() or "Relais"
+            self.relay_btn.configure(
+                text=f"{label} : actif",
+                width=150,
+                fg_color=SUCCESS, hover_color="#25B491",
+                text_color="#04212B", border_width=0,
+            )
+            return
+        offer = load_offer()
+        if offer:
+            self.relay_btn.configure(
+                text=f"Connexion sur {offer['label']}",
+                width=196,
+                fg_color=ACCENT, hover_color=ACCENT_DARK,
+                text_color="#04212B", border_width=0,
+            )
+            return
+        self.relay_btn.configure(
+            text="Relais",
+            width=104,
+            fg_color=CARD_ALT, hover_color="#2A4D70",
+            text_color=TEXT, border_width=1, border_color="#2A4D70",
+        )
+
     def toggle_relay(self) -> None:
-        from relay import RelayClient, clear_relay, load_relay, relay_active, save_relay
+        from relay import (
+            RelayClient,
+            accept_offer,
+            clear_relay,
+            error_text,
+            load_offer,
+            load_relay,
+            relay_active,
+            save_relay,
+        )
 
         if relay_active():
             config = load_relay() or {}
-            target = config.get("url", "")
-            if not messagebox.askyesno(APP_NAME, f"Retirer le relais vers\n{target} ?"):
+            target = str(config.get("url", ""))
+            label = str(config.get("label", "")).strip() or "Relais"
+            user = str(config.get("username", "")).strip()
+            body = target + (f"\nCompte : {user}" if user else "")
+            if not messagebox.askyesno(APP_NAME, f"Relais actif ({label}) :\n{body}\n\nLe retirer ?"):
                 return
             clear_relay()
-            self.relay_btn.configure(
-                text="Relais",
-                fg_color=CARD_ALT, hover_color="#2A4D70",
-                text_color=TEXT, border_width=1, border_color="#2A4D70",
+            offer = load_offer()
+            self._sync_relay_button()
+            if offer:
+                self._append_log(
+                    f"Relais retire : le bouton Connexion sur {offer['label']} est a nouveau propose."
+                )
+            else:
+                self._append_log("Relais retire : les transcriptions se feront a nouveau sur ce PC.")
+            return
+
+        offer = load_offer()
+        if offer:
+            config = accept_offer()
+            if config is None:
+                return
+            try:
+                RelayClient(config).ping()
+            except Exception as exc:
+                clear_relay()
+                self._sync_relay_button()
+                messagebox.showerror(
+                    APP_NAME,
+                    "Connexion impossible :\n" + error_text(exc, str(config.get("url", ""))),
+                )
+                return
+            self._sync_relay_button()
+            user = str(config.get("username", "")).strip()
+            who = f" via le compte {user}" if user else ""
+            self._append_log(
+                f"Connecte sur {config.get('label', 'Serveur')} : {config['url']}{who}. "
+                "Les transcriptions se feront sur ce serveur."
             )
-            self._append_log("Relais retire : les transcriptions se feront a nouveau sur ce PC.")
             return
 
         dialog = ctk.CTkInputDialog(
@@ -556,7 +615,12 @@ class TruiteRetranscriptionApp(_Root):
         password = (dialog.get_input() or "").strip()
         if not password:
             return
-        config = save_relay(url, password)
+        dialog = ctk.CTkInputDialog(
+            title=f"{APP_NAME} — Relais",
+            text="Pseudo du compte a utiliser (laisser vide\npour le mot de passe global) :",
+        )
+        username = (dialog.get_input() or "").strip()
+        config = save_relay(url, password, username=username)
         try:
             RelayClient(config).ping()
         except Exception as exc:
@@ -565,14 +629,11 @@ class TruiteRetranscriptionApp(_Root):
                 APP_NAME,
                 "Connexion au relais impossible.\n"
                 "Verifiez l'adresse, le mot de passe, et que Truite Retranscription\n"
-                "tourne sur ce PC avec le mode distant active.",
+                "tourne sur ce PC avec le mode distant active.\n\n"
+                + error_text(exc, config["url"]),
             )
             return
-        self.relay_btn.configure(
-            text="Relais : actif",
-            fg_color=SUCCESS, hover_color="#25B491",
-            text_color="#04212B", border_width=0,
-        )
+        self._sync_relay_button()
         self._append_log(
             f"Relais actif vers {config['url']} : ce PC forward les fichiers, "
             "l'autre PC transcrit."
@@ -808,7 +869,20 @@ def _cli(argv: list[str]) -> int:
     transcribe.add_argument("--output", default=None, help="fichier .txt de sortie")
     serve = sub.add_parser("serve", help="demarrer le serveur d'acces distant")
     serve.add_argument("--port", type=int, default=None)
+    register = sub.add_parser("register", help="creer un compte distant avec quota")
+    register.add_argument("--user", required=True)
+    register.add_argument("--password", required=True)
     args = parser.parse_args(argv)
+
+    if args.command == "register":
+        import accounts
+
+        error = accounts.create(args.user, args.password)
+        if error:
+            print(error)
+            return 1
+        print(f"Compte cree : {args.user.strip()} ({int(accounts.MAX_CREDIT)} min de quota).")
+        return 0
 
     if args.command == "warmup":
         engine = Transcriber(args.model)

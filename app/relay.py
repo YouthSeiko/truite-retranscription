@@ -10,6 +10,7 @@ from typing import Callable, Optional
 from transcriber import PROJECT_ROOT
 
 RELAY_CONFIG_PATH = PROJECT_ROOT / "relay_config.json"
+OFFER_PATH = PROJECT_ROOT / "offer.json"
 BOUNDARY = "truite-relay-boundary"
 
 
@@ -22,16 +23,58 @@ def load_relay() -> Optional[dict]:
     password = str(data.get("password", ""))
     if not url or not password:
         return None
-    return {"url": url, "password": password}
+    result = {"url": url, "password": password}
+    username = str(data.get("username", "")).strip()
+    if username:
+        result["username"] = username
+    label = str(data.get("label", "")).strip()
+    if label:
+        result["label"] = label
+    return result
 
 
-def save_relay(url: str, password: str) -> dict:
+def save_relay(url: str, password: str, username: str = "", label: str = "") -> dict:
     url = url.strip().rstrip("/")
     if not url.startswith(("http://", "https://")):
         url = f"http://{url}"
-    data = {"url": url, "password": password}
+    data: dict = {"url": url, "password": password}
+    username = username.strip()
+    if username:
+        data["username"] = username
+    label = label.strip()
+    if label:
+        data["label"] = label
     RELAY_CONFIG_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return data
+
+
+def load_offer() -> Optional[dict]:
+    try:
+        data = json.loads(OFFER_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    url = str(data.get("url", "")).strip()
+    password = str(data.get("password", ""))
+    if not url or not password:
+        return None
+    offer = {"url": url, "password": password}
+    username = str(data.get("username", "")).strip()
+    if username:
+        offer["username"] = username
+    offer["label"] = str(data.get("label", "")).strip() or "Serveur"
+    return offer
+
+
+def accept_offer() -> Optional[dict]:
+    offer = load_offer()
+    if offer is None:
+        return None
+    return save_relay(
+        offer["url"],
+        offer["password"],
+        username=offer.get("username", ""),
+        label=offer.get("label", ""),
+    )
 
 
 def clear_relay() -> None:
@@ -99,6 +142,7 @@ class RelayClient:
     def __init__(self, config: dict) -> None:
         self.url = config["url"]
         self.password = config["password"]
+        self.username = str(config.get("username", "")).strip()
         self._opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor())
 
     @property
@@ -109,7 +153,10 @@ class RelayClient:
         return self._opener.open(request, timeout=timeout)
 
     def _login(self) -> None:
-        body = json.dumps({"password": self.password}).encode("utf-8")
+        payload: dict = {"password": self.password}
+        if self.username:
+            payload["username"] = self.username
+        body = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
             f"{self.url}/api/login", data=body,
             headers={"Content-Type": "application/json"}, method="POST",

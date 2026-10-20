@@ -93,10 +93,36 @@ TruiteRetranscription.exe serve --port 8722   # serveur seul (après activation 
 Un PC faible peut **déléguer ses transcriptions à un PC plus puissant** de la maison (ou réciproquement) :
 
 1. Sur le **PC moteur** : activez le *Mode distant* (mot de passe) comme décrit ci-dessus.
-2. Sur le **PC client** : cliquez sur le bouton **Relais**, saisissez l'adresse du PC moteur (ex. `http://192.168.1.14:8722`) puis son mot de passe. Le bouton passe en « Relais : actif ».
+2. Sur le **PC client** : cliquez sur le bouton **Relais**, saisissez l'adresse du PC moteur (ex. `http://192.168.1.14:8722`), son mot de passe, puis le **pseudo du compte** à utiliser (laisser vide pour le mot de passe global). Le bouton passe en « Relais : actif ».
 3. Désormais, tout fichier déposé sur le PC client (interface ou page web locale) est **envoyé au PC moteur** : la progression et le texte reviennent en temps réel, le fichier `.txt` est écrit localement sur le client. Le PC client ne charge jamais le modèle IA.
 
 Les deux PC peuvent faire tourner leur application en même temps. Le choix du **modèle et de la langue** reste celui du PC client (le PC moteur le téléchargera si nécessaire). Pour retirer le relais, recliquez sur le bouton *Relais*.
+
+### Comptes utilisateurs et quota
+
+L'accès à distance peut être ouvert à plusieurs personnes avec des **comptes** :
+
+- **Création** : depuis la page web (bouton *Créer un compte*), ou en ligne de commande sur le PC moteur :
+  ```bash
+  TruiteRetranscription.exe register --user gregre --password ********
+  ```
+- **Quota** : chaque compte dispose d'un pool de **300 minutes** d'audio, régénéré de **1 minute toutes les 6 minutes** (plafonné à 300). Le quota se décompte de la durée audio réellement transcrite, et **uniquement** pour les fichiers envoyés par ce compte (page web ou relais) — les transcriptions locales sur le PC moteur ne sont jamais comptées.
+- **Isolation** : chaque compte ne voit et ne télécharge que **ses** propres transcriptions.
+- Le **mot de passe global** (Mode distant) reste un accès **administrateur** : illimité, il voit tous les jobs et tous les comptes avec leur solde.
+- À quota épuisé, l'envoi est refusé (403) avec un message rappelant la régénération.
+- Pour **supprimer un compte** : ouvrez `accounts.json` (uniquement des hachés scrypt) et effacez sa ligne.
+
+### Version pré-configurée : bouton « Connexion sur Gregre »
+
+Pour livrer l'application à une tierce personne (ex. Gregre) déjà reliée à votre PC, sans qu'elle ait à saisir d'adresse ni de mot de passe :
+
+```powershell
+.\build.ps1 -OfferUrl "http://192.168.1.14:8722" -OfferUser gregre -OfferPassword "********" -OfferLabel "Gregre"
+```
+
+Le dossier construit contient alors un `offer.json` : au premier lancement, le bouton du header affiche **« Connexion sur Gregre »** (bleu) — un clic teste la connexion et le bouton passe en **« Gregre : actif »** (vert). Sans `offer.json`, le bouton *Relais* ouvre le dialogue manuel habituel.
+
+> Utilisez de préférence les identifiants d'un **compte** dans l'offre : la transcription est alors soumise au quota. Le mot de passe global donne un accès administrateur illimité.
 
 ## Utilisation
 
@@ -111,6 +137,7 @@ Les deux PC peuvent faire tourner leur application en même temps. Le choix du *
 TruiteRetranscription.exe transcribe mon_audio.mp3              # écrit mon_audio.txt
 TruiteRetranscription.exe transcribe mon_audio.mp3 --model tiny --language fr
 TruiteRetranscription.exe warmup --model small                  # pré-télécharger un modèle
+TruiteRetranscription.exe register --user gregre --password ****  # créer un compte distant
 ```
 
 ## Construction de l'exécutable
@@ -118,6 +145,8 @@ TruiteRetranscription.exe warmup --model small                  # pré-télécha
 ```powershell
 .\build.ps1            # construit le dossier TruiteRetranscription\ à la racine
 .\build.ps1 -Clean      # reconstruction complète
+.\build.ps1 -OfferUrl "http://192.168.1.14:8722" -OfferUser gregre -OfferPassword "********" -OfferLabel "Gregre"
+                        # idem + offer.json (bouton « Connexion sur Gregre »)
 ```
 
 Le dépôt contient aussi un workflow GitHub Actions (`Build & Sign`) qui construit, signe (si SignPath est configuré) et publie la release automatiquement à chaque tag `v*`.
@@ -132,6 +161,7 @@ retranscription/
 │   ├── jobs.py              # file de jobs partagée (local + distant)
 │   ├── server.py            # serveur web intégré (FastAPI, auth, WebSocket)
 │   ├── relay.py             # relais vers un PC moteur (forward des jobs)
+│   ├── accounts.py          # comptes distants + quota (haché scrypt, 300 min)
 │   ├── web/index.html       # page web mobile (embarquée dans l'exe)
 │   ├── warmup_model.py      # pré-téléchargement du modèle IA
 │   ├── make_icon.py         # génération de l'icône/logo (Pillow)
@@ -151,7 +181,9 @@ retranscription/
 - `transcriptions/` : fichiers texte générés (à côté des audios)
 - `config.json` : préférences (modèle, langue, options)
 - `remote_config.json` : mot de passe du mode distant (haché scrypt)
-- `relay_config.json` : adresse + mot de passe du relais (PC client uniquement)
+- `relay_config.json` : adresse + identifiants du relais (PC client uniquement)
+- `accounts.json` : comptes distants (pseudo, haché scrypt, solde de quota)
+- `offer.json` : offre de connexion pré-configurée (générée par `build.ps1 -Offer*`, jamais versionnée)
 - `remote_uploads/` : copies reçues des appareils distants (supprimées après transcription)
 
 Aucune donnée n'est envoyée sur Internet, à part le téléchargement initial des modèles IA. Sur le réseau local, transitent les fichiers audio vers le PC moteur et le texte en retour.

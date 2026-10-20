@@ -1,6 +1,10 @@
 # Truite Retranscription - Construction du dossier TruiteRetranscription/
 param(
-    [switch]$Clean
+    [switch]$Clean,
+    [string]$OfferUrl = "",
+    [string]$OfferUser = "",
+    [string]$OfferPassword = "",
+    [string]$OfferLabel = "Gregre"
 )
 
 $ErrorActionPreference = "Stop"
@@ -60,6 +64,16 @@ if (Test-Path $outDir) {
     exit 1
 }
 Copy-Item -Recurse $distDir $outDir
+if ($OfferUrl -and $OfferPassword) {
+    $offer = [ordered]@{
+        url = $OfferUrl
+        password = $OfferPassword
+    }
+    if ($OfferUser) { $offer.username = $OfferUser }
+    $offer.label = $OfferLabel
+    $offer | ConvertTo-Json | Set-Content -Path (Join-Path $outDir "offer.json") -Encoding UTF8
+    Write-Host "  Offre ecrite : offer.json ($OfferLabel -> $OfferUrl)" -ForegroundColor Gray
+}
 $size = [math]::Round((Get-ChildItem $outDir -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1)
 Write-Host ""
 Write-Host "  Build OK : dossier TruiteRetranscription ($size Mo)" -ForegroundColor Green

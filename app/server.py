@@ -18,6 +18,7 @@ import uvicorn
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
+import accounts
 from jobs import DONE, Job, JobQueue, get_queue
 from transcriber import AUDIO_EXTENSIONS, LANGUAGES, MODEL_SIZES, PROJECT_ROOT
 
@@ -28,8 +29,9 @@ REMOTE_CONFIG_PATH = PROJECT_ROOT / "remote_config.json"
 UPLOAD_DIR = PROJECT_ROOT / "remote_uploads"
 DEFAULT_PORT = 8722
 
-_sessions: dict[str, float] = {}
+_sessions: dict[str, dict] = {}
 _login_fails: dict[str, list[float]] = {}
+_register_fails: dict[str, list[float]] = {}
 
 
 def _load_remote_config() -> dict:
@@ -73,11 +75,26 @@ def verify_password(password: str) -> bool:
 def _session_valid(token: str | None) -> bool:
     if not token:
         return False
-    expiry = _sessions.get(token)
-    if expiry is None or expiry < time.time():
+    session = _sessions.get(token)
+    if session is None or session["exp"] < time.time():
         _sessions.pop(token, None)
         return False
     return True
+
+
+def _session_user(token: str | None) -> str:
+    if not token or token not in _sessions:
+        return ""
+    return str(_sessions[token].get("user", ""))
+
+
+def _quota_payload(user: str) -> dict | None:
+    if not user:
+        return None
+    credit = accounts.get_credit(user)
+    if credit is None:
+        return None
+    return {"credit": round(credit, 1), "max": accounts.MAX_CREDIT}
 
 
 def _login_allowed(ip: str) -> bool:
@@ -89,6 +106,16 @@ def _login_allowed(ip: str) -> bool:
 
 def _record_login_fail(ip: str) -> None:
     _login_fails.setdefault(ip, []).append(time.time())
+
+
+def _register_allowed(ip: str) -> bool:
+    now = time.time()
+    recent = [t for t in _register_fails.get(ip, []) if now - t < 3600]
+    _register_fails[ip] = recent
+    if len(recent) >= 10:
+        return False
+    _register_fails[ip].append(now)
+    return True
 
 
 def get_lan_ip() -> str:
@@ -185,7 +212,7 @@ class RemoteServer:
         self._server: uvicorn.Server | None = None
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._clients: set[WebSocket] = set()
+        self._clients: dict[WebSocket, str] = {}
         self._subscribed = False
         self._html = ""
         self._app = self._build_app()
@@ -232,9 +259,16 @@ class RemoteServer:
             info["tailscale"] = f"http://{tailscale}:{self.port}"
         return info
 
-    def _state_payload(self) -> dict:
+    def _state_payload(self, owner: str | None = None) -> dict:
         jobs = sorted(self.queue.jobs.values(), key=lambda j: j.created, reverse=True)[:50]
-        return {"type": "state", "jobs": [job.public() for job in jobs]}
+        if owner:
+            jobs = [job for job in jobs if job.owner == owner]
+        payload: dict = {"type": "state", "jobs": [job.public() for job in jobs]}
+        if owner is None:
+            payload["accounts"] = accounts.list_accounts()
+        else:
+            payload["quota"] = _quota_payload(owner)
+        return payload
 
     def _on_job_change(self, job: Job) -> None:
         if job.origin == "remote" and not job.active:
@@ -243,6 +277,11 @@ class RemoteServer:
                     if path.parent.name == "remote_uploads":
                         path.unlink()
                 except OSError:
+                    pass
+            if job.status == DONE and job.owner and job.duration > 0:
+                try:
+                    accounts.debit(job.owner, job.duration / 60.0)
+                except Exception:
                     pass
         loop = self._loop
         if loop is None:
@@ -253,12 +292,17 @@ class RemoteServer:
             pass
 
     async def _broadcast(self) -> None:
-        payload = self._state_payload()
-        for client in list(self._clients):
+        admin_payload: dict | None = None
+        for client, user in list(self._clients.items()):
             try:
-                await client.send_json(payload)
+                if not user:
+                    if admin_payload is None:
+                        admin_payload = self._state_payload(None)
+                    await client.send_json(admin_payload)
+                else:
+                    await client.send_json(self._state_payload(user))
             except Exception:
-                self._clients.discard(client)
+                self._clients.pop(client, None)
 
     def _build_app(self) -> FastAPI:
         @asynccontextmanager
@@ -269,7 +313,7 @@ class RemoteServer:
 
         app = FastAPI(title="Truite Retranscription", lifespan=lifespan, docs_url=None, redoc_url=None)
 
-        public_paths = {"/api/info", "/api/login"}
+        public_paths = {"/api/info", "/api/login", "/api/register"}
 
         @app.middleware("http")
         async def auth_guard(request: Request, call_next):
@@ -312,14 +356,35 @@ class RemoteServer:
                 raise HTTPException(status_code=429, detail="Trop de tentatives. Reessayez dans 5 minutes.")
             body = await request.json()
             password = str(body.get("password", ""))
-            if not password_defined() or not verify_password(password):
-                _record_login_fail(ip)
-                raise HTTPException(status_code=401, detail="Mot de passe incorrect")
+            username = str(body.get("username", "") or "").strip()
+            if username:
+                user = accounts.authenticate(username, password)
+                if not user:
+                    _record_login_fail(ip)
+                    raise HTTPException(status_code=401, detail="Identifiants incorrects")
+            else:
+                if not password_defined() or not verify_password(password):
+                    _record_login_fail(ip)
+                    raise HTTPException(status_code=401, detail="Mot de passe incorrect")
+                user = ""
             token = secrets.token_urlsafe(32)
-            _sessions[token] = time.time() + SESSION_LIFETIME
+            _sessions[token] = {"exp": time.time() + SESSION_LIFETIME, "user": user}
             response.set_cookie(
                 COOKIE, token, max_age=SESSION_LIFETIME, httponly=True, samesite="lax"
             )
+            return {"ok": True, "admin": not user, "quota": _quota_payload(user)}
+
+        @app.post("/api/register")
+        async def register(request: Request) -> dict:
+            ip = request.client.host if request.client else "?"
+            if not _register_allowed(ip):
+                raise HTTPException(status_code=429, detail="Trop de tentatives. Reessayez dans une heure.")
+            body = await request.json()
+            error = accounts.create(
+                str(body.get("username", "") or ""), str(body.get("password", "") or "")
+            )
+            if error:
+                raise HTTPException(status_code=400, detail=error)
             return {"ok": True}
 
         @app.post("/api/logout")
@@ -330,7 +395,8 @@ class RemoteServer:
 
         @app.get("/api/state")
         async def state(token: str = Depends(require_session)) -> dict:
-            return self._state_payload()
+            user = _session_user(token)
+            return self._state_payload(None if not user else user)
 
         @app.post("/api/upload")
         async def upload(
@@ -340,6 +406,14 @@ class RemoteServer:
             language: str = Form(""),
             token: str = Depends(require_session),
         ) -> dict:
+            user = _session_user(token)
+            if user:
+                credit = accounts.get_credit(user)
+                if credit is not None and credit <= 0:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Quota epuise : 0 minute disponible. Le compteur regenere 1 min toutes les 6 min.",
+                    )
             raw_name = Path(file.filename or "audio.mp3").name
             safe = "".join(c if c.isalnum() or c in " -_()." else "_" for c in raw_name).strip() or "audio.mp3"
             if Path(safe).suffix.lower() not in AUDIO_EXTENSIONS:
@@ -367,13 +441,14 @@ class RemoteServer:
                 lang_key = language
             else:
                 lang_key = None
-            job = self.queue.submit([dest], model_name, lang_key, True, origin="remote")
+            job = self.queue.submit([dest], model_name, lang_key, True, origin="remote", owner=user)
             return job.public()
 
         @app.post("/api/cancel/{job_id}")
         async def cancel_job(job_id: str, token: str = Depends(require_session)) -> dict:
+            user = _session_user(token)
             job = self.queue.jobs.get(job_id)
-            if job is None:
+            if job is None or (user and job.owner != user):
                 raise HTTPException(status_code=404, detail="Travail inconnu")
             if job.active:
                 self.queue.cancel(job_id)
@@ -381,8 +456,9 @@ class RemoteServer:
 
         @app.get("/api/download/{job_id}/{fmt}")
         async def download(job_id: str, fmt: str, token: str = Depends(require_session)) -> Response:
+            user = _session_user(token)
             job = self.queue.jobs.get(job_id)
-            if job is None or job.status != DONE:
+            if job is None or job.status != DONE or (user and job.owner != user):
                 raise HTTPException(status_code=409, detail="Resultat non disponible")
             if fmt not in ("txt", "srt", "vtt"):
                 raise HTTPException(status_code=400, detail="Format inconnu")
@@ -405,15 +481,16 @@ class RemoteServer:
                 await ws.close(code=4401)
                 return
             await ws.accept()
-            self._clients.add(ws)
+            user = _session_user(token)
+            self._clients[ws] = user
             try:
-                await ws.send_json(self._state_payload())
+                await ws.send_json(self._state_payload(None if not user else user))
                 while True:
                     await ws.receive_text()
             except Exception:
                 pass
             finally:
-                self._clients.discard(ws)
+                self._clients.pop(ws, None)
 
         return app
 
