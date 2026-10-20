@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import queue
+import socket
 import threading
 import time
 import traceback
@@ -8,9 +10,54 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
+from urllib.parse import urlparse
 
 import relay
+from server import get_lan_ip, get_tailscale_ip
 from transcriber import PROJECT_ROOT, Transcriber, export_segments, human_duration
+
+
+def _relay_is_local(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").strip().lower()
+        if not host:
+            return False
+        if host in ("127.0.0.1", "localhost", "::1", "[::1]"):
+            return True
+        local_ips = set()
+        for getter in (get_lan_ip, get_tailscale_ip):
+            try:
+                ip = getter()
+                if ip:
+                    local_ips.add(str(ip).strip().lower())
+            except Exception:
+                continue
+        if host in local_ips:
+            return True
+        try:
+            resolved = socket.gethostbyname(host).lower()
+            if resolved in local_ips or resolved in ("127.0.0.1", "::1"):
+                return True
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return False
+
+
+def _should_use_relay() -> bool:
+    cfg = relay.load_relay()
+    if cfg is None:
+        return False
+    url = str(cfg.get("url", ""))
+    if _relay_is_local(url):
+        try:
+            relay.clear_relay()
+        except Exception:
+            pass
+        return False
+    return True
 
 QUEUED = "queued"
 RUNNING = "running"
@@ -174,7 +221,7 @@ class JobQueue:
                 self._emit("finished", None, job)
 
     def _run(self, job: Job) -> None:
-        if relay.relay_active():
+        if _should_use_relay():
             self._run_relay(job)
             return
 
