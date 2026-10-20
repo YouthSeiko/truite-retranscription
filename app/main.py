@@ -88,6 +88,8 @@ class TruiteRetranscriptionApp(_Root):
         self.current_job_id: str | None = None
         self.remote = None
         self.remote_win = None
+        self.relay_quota = None
+        self.relay_quota_label = None
         self.last_result: str = ""
         self.last_sources: list[Path] = []
 
@@ -99,6 +101,7 @@ class TruiteRetranscriptionApp(_Root):
         self._build_ui()
         self._bind_drop()
         self.after(100, self._poll_messages)
+        self.after(400, self._auto_start_remote)
 
     def _build_ui(self) -> None:
         self.grid_columnconfigure(0, weight=1)
@@ -456,6 +459,31 @@ class TruiteRetranscriptionApp(_Root):
         )
         self.current_job_id = submitted.id
 
+    def _auto_start_remote(self) -> None:
+        from server import DEFAULT_PORT, RemoteServer, auto_start_enabled, password_defined
+
+        if self.remote is not None or not password_defined() or not auto_start_enabled():
+            return
+        server = RemoteServer(self.job_queue, DEFAULT_PORT)
+        try:
+            server.start()
+        except Exception as exc:
+            self._append_log(f"Mode distant : demarrage automatique impossible ({exc}).")
+            return
+        self._set_remote_active(server, automatic=True)
+
+    def _set_remote_active(self, server, automatic: bool = False) -> None:
+        self.remote = server
+        self.remote_btn.configure(
+            text="Distant : actif",
+            fg_color=SUCCESS, hover_color="#25B491",
+            text_color="#04212B", border_width=0,
+        )
+        urls = server.urls()
+        source = "demarrage automatique" if automatic else "activation manuelle"
+        self._append_log(f"Mode distant actif ({source}) : {urls['lan']}")
+        self._show_remote_window()
+
     def toggle_remote(self) -> None:
         from server import DEFAULT_PORT, RemoteServer, password_defined, set_password
 
@@ -507,24 +535,59 @@ class TruiteRetranscriptionApp(_Root):
         except Exception as exc:
             messagebox.showerror(APP_NAME, f"Impossible de demarrer le serveur distant.\n{exc}")
             return
-        self.remote = server
-        self.remote_btn.configure(
-            text="Distant : actif",
-            fg_color=SUCCESS, hover_color="#25B491",
-            text_color="#04212B", border_width=0,
-        )
-        urls = server.urls()
-        self._append_log(f"Mode distant actif : {urls['lan']}")
-        self._show_remote_window()
+        self._set_remote_active(server)
+
+    def _refresh_relay_quota(self) -> None:
+        if not relay_active():
+            self.relay_quota = None
+            if self.relay_quota_label is not None:
+                self.relay_quota_label.configure(text="")
+            self._sync_relay_button()
+            return
+        config = load_relay() or {}
+        if not config.get("username"):
+            self.relay_quota = None
+            if self.relay_quota_label is not None:
+                self.relay_quota_label.configure(text="")
+            self._sync_relay_button()
+            return
+        try:
+            from relay import RelayClient
+
+            client = RelayClient(config)
+            data = client.state()
+            q = data.get("quota")
+            if isinstance(q, dict) and "credit" in q and "max" in q:
+                credit = int(float(q.get("credit", 0)))
+                maxc = int(float(q.get("max", 0)))
+                if (self.relay_quota or {}).get("credit") != credit or self.relay_quota is None:
+                    self.relay_quota = {"credit": credit, "max": maxc}
+                    self._sync_relay_button()
+                if self.relay_quota_label is not None:
+                    self.relay_quota_label.configure(
+                        text=f"Quota Gregre : {credit} / {maxc} minutes restantes"
+                    )
+            else:
+                if self.relay_quota is not None:
+                    self.relay_quota = None
+                    self._sync_relay_button()
+                if self.relay_quota_label is not None:
+                    self.relay_quota_label.configure(text="")
+        except Exception:
+            pass
 
     def _sync_relay_button(self) -> None:
         from relay import load_offer, load_relay, relay_active
 
         if relay_active():
             label = str((load_relay() or {}).get("label", "")).strip() or "Relais"
+            if self.relay_quota:
+                text = f"{label} : actif - {self.relay_quota['credit']} / {self.relay_quota['max']} min"
+            else:
+                text = f"{label} : actif"
             self.relay_btn.configure(
-                text=f"{label} : actif",
-                width=150,
+                text=text,
+                width=210,
                 fg_color=SUCCESS, hover_color="#25B491",
                 text_color="#04212B", border_width=0,
             )
@@ -562,10 +625,13 @@ class TruiteRetranscriptionApp(_Root):
             target = str(config.get("url", ""))
             label = str(config.get("label", "")).strip() or "Relais"
             user = str(config.get("username", "")).strip()
-            body = target + (f"\nCompte : {user}" if user else "")
+            body = target + (f"\nCompte : {user}" if user else "\nMode : mot de passe global (illimite)")
             if not messagebox.askyesno(APP_NAME, f"Relais actif ({label}) :\n{body}\n\nLe retirer ?"):
                 return
             clear_relay()
+            self.relay_quota = None
+            if self.relay_quota_label is not None:
+                self.relay_quota_label.configure(text="")
             offer = load_offer()
             self._sync_relay_button()
             if offer:
@@ -598,6 +664,10 @@ class TruiteRetranscriptionApp(_Root):
                 f"Connecte sur {config.get('label', 'Serveur')} : {config['url']}{who}. "
                 "Les transcriptions se feront sur ce serveur."
             )
+            self.relay_quota = None
+            if self.relay_quota_label is not None:
+                self.relay_quota_label.configure(text="")
+            self.after(300, self._refresh_relay_quota)
             return
 
         dialog = ctk.CTkInputDialog(
@@ -638,6 +708,10 @@ class TruiteRetranscriptionApp(_Root):
             f"Relais actif vers {config['url']} : ce PC forward les fichiers, "
             "l'autre PC transcrit."
         )
+        self.relay_quota = None
+        if self.relay_quota_label is not None:
+            self.relay_quota_label.configure(text="")
+        self.after(300, self._refresh_relay_quota)
 
     def _show_remote_window(self) -> None:
         from server import open_firewall
@@ -672,10 +746,19 @@ class TruiteRetranscriptionApp(_Root):
             font=ctk.CTkFont(size=13), text_color=MUTED, wraplength=380, justify="left",
         ).grid(row=1, column=0, padx=24, sticky="w")
 
+        from server import auto_start_enabled, set_auto_start
+
+        auto_var = ctk.BooleanVar(value=auto_start_enabled())
+        ctk.CTkCheckBox(
+            win, text="Demarrer automatiquement avec l'application",
+            variable=auto_var, font=ctk.CTkFont(size=13), text_color=TEXT,
+            command=lambda: set_auto_start(auto_var.get()),
+        ).grid(row=2, column=0, padx=24, pady=(10, 0), sticky="w")
+
         qr_image = self._make_qr_image(urls["lan"])
         if qr_image:
             qr_frame = ctk.CTkFrame(win, fg_color=CARD, corner_radius=14)
-            qr_frame.grid(row=2, column=0, padx=24, pady=16, sticky="ew")
+            qr_frame.grid(row=3, column=0, padx=24, pady=16, sticky="ew")
             qr_label = ctk.CTkLabel(qr_frame, image=qr_image, text="")
             qr_label.image = qr_image
             qr_label.pack(padx=20, pady=16)
@@ -685,7 +768,7 @@ class TruiteRetranscriptionApp(_Root):
             ).pack(pady=(0, 14))
 
         links = ctk.CTkFrame(win, fg_color=CARD, corner_radius=14)
-        links.grid(row=3, column=0, padx=24, sticky="ew")
+        links.grid(row=4, column=0, padx=24, sticky="ew")
         links.grid_columnconfigure(0, weight=1)
 
         row = 0
@@ -737,14 +820,14 @@ class TruiteRetranscriptionApp(_Root):
             font=ctk.CTkFont(size=13, weight="bold"),
             fg_color=ACCENT, hover_color=ACCENT_DARK, corner_radius=10,
             command=lambda: self._open_firewall(server.port),
-        ).grid(row=4, column=0, padx=24, pady=(14, 4), sticky="ew")
+        ).grid(row=5, column=0, padx=24, pady=(14, 4), sticky="ew")
 
         self.remote_status = ctk.CTkLabel(
             win,
             text=f"Serveur actif sur le port {server.port} — arretez-le depuis la fenetre principale.",
             font=ctk.CTkFont(size=11.5), text_color=MUTED, wraplength=380, justify="left",
         )
-        self.remote_status.grid(row=5, column=0, padx=24, pady=(0, 18), sticky="w")
+        self.remote_status.grid(row=6, column=0, padx=24, pady=(0, 18), sticky="w")
 
     @staticmethod
     def _make_qr_image(url: str, size: int = 176):
