@@ -111,8 +111,12 @@ class TruiteRetranscriptionApp(_Root):
         header.grid(row=0, column=0, sticky="ew", padx=24, pady=(22, 6))
         header.grid_columnconfigure(1, weight=1)
 
-        logo_path = PROJECT_ROOT / "app" / "logo.png"
-        if logo_path.exists():
+        _bundle = Path(getattr(sys, "_MEIPASS", "")) if getattr(sys, "frozen", False) else Path("")
+        logo_path = next(
+            (p for p in (_bundle / "app" / "logo.png", PROJECT_ROOT / "app" / "logo.png") if p.exists()),
+            None,
+        )
+        if logo_path:
             try:
                 from PIL import Image as PILImage
 

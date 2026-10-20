@@ -11,7 +11,8 @@ param(
 $ErrorActionPreference = "Continue"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Exe = Join-Path $Root "TruiteRetranscription.exe"
+$Exe = Join-Path $Root "TruiteRetranscription\TruiteRetranscription.exe"
+if (-not (Test-Path $Exe)) { $Exe = Join-Path $Root "TruiteRetranscription.exe" }
 $Venv = Join-Path $Root ".venv"
 $VenvPython = Join-Path $Venv "Scripts\python.exe"
 $Requirements = Join-Path $Root "app\requirements.txt"

@@ -1,0 +1,143 @@
+name: Build & Sign
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dependances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r app/requirements.txt pyinstaller
+
+      - name: Determiner la version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}" -like "refs/tags/*") {
+            $v = "${{ github.ref_name }}"
+          } else {
+            $v = "snapshot"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Construire le dossier (onedir)
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --onedir --windowed `
+            --name TruiteRetranscription `
+            --icon app/icon.ico `
+            --add-data "app/logo.png;app" `
+            --collect-data tkinterdnd2 `
+            --hidden-import tkinterdnd2 `
+            --hidden-import tkinterdnd2.TkinterDnD `
+            --paths app app/main.py
+
+      - name: Verifier l'executable
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist\TruiteRetranscription\TruiteRetranscription.exe")) {
+            throw "Executable introuvable apres build"
+          }
+
+      - name: Upload artefact non signe
+        id: upload-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-unsigned
+          path: dist
+          if-no-files-found: error
+
+  sign:
+    needs: build
+    if: vars.SIGNPATH_ORGANIZATION_ID != ''
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Telecharger l'artefact non signe
+        uses: actions/download-artifact@v4
+        with:
+          name: package-unsigned
+
+      - name: Re-uploader pour SignPath
+        id: upload-for-signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-for-signing
+          path: dist
+          if-no-files-found: error
+
+      - name: Soumettre la demande de signature
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-for-signing.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Upload artefact signe
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-signed
+          path: signed
+          if-no-files-found: error
+
+  release:
+    needs: [build, sign]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success' && (needs.sign.result == 'success' || needs.sign.result == 'skipped')
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Telecharger l'artefact signe (ou non signe)
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.sign.result == 'success' && 'package-signed' || 'package-unsigned' }}
+
+      - name: Creer l'archive de release
+        id: pack
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path . -Recurse -Filter "TruiteRetranscription.exe" | Select-Object -First 1
+          if (-not $exe) { throw "Executable introuvable dans l'artefact" }
+          $folder = $exe.Directory.FullName
+          $zip = "TruiteRetranscription-$env:VERSION-win64.zip"
+          if (Test-Path $zip) { Remove-Item $zip }
+          Compress-Archive -Path $folder -DestinationPath $zip
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+
+      - name: Creer la release GitHub
+        shell: pwsh
+        run: |
+          gh release view $env:VERSION 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:VERSION --title "Truite Retranscription $env:VERSION" --notes "Version $env:VERSION - transcription audio en local. Voir le README section antivirus en cas d'alerte."
+          }
+          gh release upload $env:VERSION "${{ steps.pack.outputs.zip }}" --clobber

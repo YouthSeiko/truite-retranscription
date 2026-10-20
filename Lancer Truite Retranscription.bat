@@ -1,6 +1,10 @@
 @echo off
 title Truite Retranscription
 cd /d "%~dp0"
+if exist "TruiteRetranscription\TruiteRetranscription.exe" (
+    start "" "TruiteRetranscription\TruiteRetranscription.exe"
+    exit /b 0
+)
 if exist "TruiteRetranscription.exe" (
     start "" "TruiteRetranscription.exe"
     exit /b 0

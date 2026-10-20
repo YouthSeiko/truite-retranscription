@@ -1,4 +1,4 @@
-# Truite Retranscription - Construction de TruiteRetranscription.exe
+# Truite Retranscription - Construction du dossier TruiteRetranscription/
 param(
     [switch]$Clean
 )
@@ -14,14 +14,20 @@ if (-not (Test-Path $VenvPython)) {
 
 & $VenvPython -m pip install --quiet pyinstaller pillow
 
+if ($Clean) {
+    Remove-Item -Recurse -Force (Join-Path $Root "build"), (Join-Path $Root "dist") -ErrorAction SilentlyContinue
+}
+
+$LogoData = "{0};app" -f (Join-Path $Root "app\logo.png")
 $pyArgs = @(
     "-m", "PyInstaller",
     "--noconfirm",
     "--clean",
-    "--onefile",
+    "--onedir",
     "--windowed",
     "--name", "TruiteRetranscription",
     "--icon", (Join-Path $Root "app\icon.ico"),
+    "--add-data", $LogoData,
     "--collect-data", "tkinterdnd2",
     "--hidden-import", "tkinterdnd2",
     "--hidden-import", "tkinterdnd2.TkinterDnD",
@@ -29,25 +35,23 @@ $pyArgs = @(
     (Join-Path $Root "app\main.py")
 )
 
-if ($Clean) {
-    Remove-Item -Recurse -Force (Join-Path $Root "build"), (Join-Path $Root "dist") -ErrorAction SilentlyContinue
-}
-
 & $VenvPython @pyArgs
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Echec de la construction." -ForegroundColor Red
     exit 1
 }
 
-$exe = Join-Path $Root "dist\TruiteRetranscription.exe"
-if (Test-Path $exe) {
-    Copy-Item -Force $exe (Join-Path $Root "TruiteRetranscription.exe")
-    $size = [math]::Round((Get-Item (Join-Path $Root "TruiteRetranscription.exe")).Length / 1MB, 1)
-    Write-Host ""
-    Write-Host "  Build OK : TruiteRetranscription.exe ($size Mo)" -ForegroundColor Green
-    Write-Host "  Copie a la racine du projet, prete pour l'installateur." -ForegroundColor Gray
-    Write-Host ""
-} else {
+$distDir = Join-Path $Root "dist\TruiteRetranscription"
+$outDir = Join-Path $Root "TruiteRetranscription"
+if (-not (Test-Path (Join-Path $distDir "TruiteRetranscription.exe"))) {
     Write-Host "Executable introuvable apres build." -ForegroundColor Red
     exit 1
 }
+
+Remove-Item -Recurse -Force $outDir -ErrorAction SilentlyContinue
+Copy-Item -Recurse $distDir $outDir
+$size = [math]::Round((Get-ChildItem $outDir -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1)
+Write-Host ""
+Write-Host "  Build OK : dossier TruiteRetranscription ($size Mo)" -ForegroundColor Green
+Write-Host "  Pret pour l'installateur et pour la release GitHub." -ForegroundColor Gray
+Write-Host ""

@@ -8,7 +8,11 @@ from typing import Callable, Optional
 from faster_whisper import WhisperModel
 
 if getattr(sys, "frozen", False):
-    PROJECT_ROOT = Path(sys.executable).resolve().parent
+    _exe_dir = Path(sys.executable).resolve().parent
+    if (_exe_dir / "_internal").is_dir():
+        PROJECT_ROOT = _exe_dir.parent
+    else:
+        PROJECT_ROOT = _exe_dir
 else:
     PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = PROJECT_ROOT / ".models"
