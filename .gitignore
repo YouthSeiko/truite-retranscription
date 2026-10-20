@@ -1,0 +1,11 @@
+.venv/
+.models/
+transcriptions/
+__pycache__/
+*.pyc
+config.json
+crash.log
+build/
+dist/
+*.spec
+ReTranscription.exe
