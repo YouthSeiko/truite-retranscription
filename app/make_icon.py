@@ -89,13 +89,38 @@ def draw_trout(size: int, with_background: bool) -> Image.Image:
     return img
 
 
-def main() -> None:
-    master = draw_trout(256, with_background=True)
+def build_from_source(source: Path) -> None:
+    base = Image.open(source).convert("RGBA")
+    side = max(base.size)
+    canvas = Image.new("RGBA", (side, side), (1, 19, 45, 255))
+    canvas.paste(base, ((side - base.size[0]) // 2, (side - base.size[1]) // 2))
+    mask = Image.new("L", (side, side), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        [0, 0, side - 1, side - 1], radius=int(side * 0.23), fill=255
+    )
+    rounded = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    rounded.paste(canvas, (0, 0), mask)
+    master = rounded.resize((256, 256), Image.LANCZOS)
     master.resize((64, 64), Image.LANCZOS).save(HERE / "icon.png")
-    master.save(HERE / "icon.ico", sizes=[(64, 64), (48, 48), (32, 32), (16, 16)])
+    master.save(
+        HERE / "icon.ico",
+        sizes=[(256, 256), (64, 64), (48, 48), (32, 32), (16, 16)],
+    )
+    print(f"icon.ico, icon.png generes depuis {source.name}")
+
+
+def main() -> None:
+    source = HERE / "icon_source.png"
+    if source.exists():
+        build_from_source(source)
+    else:
+        master = draw_trout(256, with_background=True)
+        master.resize((64, 64), Image.LANCZOS).save(HERE / "icon.png")
+        master.save(HERE / "icon.ico", sizes=[(64, 64), (48, 48), (32, 32), (16, 16)])
+        print("icon.ico, icon.png generees (truite)")
     logo = draw_trout(256, with_background=False)
     logo.resize((96, 96), Image.LANCZOS).save(HERE / "logo.png")
-    print("icon.ico, icon.png, logo.png generees")
+    print("logo.png genere")
 
 
 if __name__ == "__main__":
