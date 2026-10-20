@@ -107,7 +107,7 @@ jobs:
 
   release:
     needs: [build, sign]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success' && (needs.sign.result == 'success' || needs.sign.result == 'skipped')
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success' && (needs.sign.result == 'success' || needs.sign.result == 'skipped') }}
     runs-on: windows-latest
     timeout-minutes: 30
     permissions:
