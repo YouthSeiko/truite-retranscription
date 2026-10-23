@@ -60,6 +60,16 @@ def set_password(password: str) -> None:
     _save_remote_config(config)
 
 
+def auto_start_enabled() -> bool:
+    return bool(_load_remote_config().get("auto", True))
+
+
+def set_auto_start(enabled: bool) -> None:
+    config = _load_remote_config()
+    config["auto"] = bool(enabled)
+    _save_remote_config(config)
+
+
 def verify_password(password: str) -> bool:
     stored = _load_remote_config().get("password")
     if not stored or "$" not in stored:

@@ -68,6 +68,8 @@ Le PC peut servir ses transcriptions à d'autres appareils (téléphone, tablett
 3. Une fenêtre affiche le **QR code** et l'adresse à saisir depuis l'appareil distant.
 4. Si Windows bloque la connexion, cliquez sur **« Autoriser le port au pare-feu »** (validation UAC).
 
+Dès qu'un mot de passe est défini, le serveur démarre **automatiquement** à chaque lancement de l'application : le bouton affiche « Distant : actif » sans manipulation. La case **« Demarrer automatiquement avec l'application »** (fenêtre Mode distant) permet de désactiver cette préférence, qui est mémorisée.
+
 Sur le même Wi-Fi : scannez le QR code avec l'appareil photo, connectez-vous, choisissez vos fichiers audio — la transcription se fait sur le PC (modèle IA local), le résultat se télécharge en .txt/.srt/.vtt.
 
 ### Depuis l'extérieur de votre réseau
