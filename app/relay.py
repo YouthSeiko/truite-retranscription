@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -12,6 +13,16 @@ from transcriber import PROJECT_ROOT
 RELAY_CONFIG_PATH = PROJECT_ROOT / "relay_config.json"
 OFFER_PATH = PROJECT_ROOT / "offer.json"
 BOUNDARY = "truite-relay-boundary"
+
+
+def _offer_paths() -> list[Path]:
+    paths = [OFFER_PATH]
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        paths.append(exe_dir / "offer.json")
+        if exe_dir.parent not in (exe_dir, PROJECT_ROOT):
+            paths.append(exe_dir.parent / "offer.json")
+    return paths
 
 
 def load_relay() -> Optional[dict]:
@@ -49,9 +60,14 @@ def save_relay(url: str, password: str, username: str = "", label: str = "") -> 
 
 
 def load_offer() -> Optional[dict]:
-    try:
-        data = json.loads(OFFER_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    data = None
+    for path in _offer_paths():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            break
+        except (OSError, ValueError):
+            continue
+    if not isinstance(data, dict):
         return None
     url = str(data.get("url", "")).strip()
     password = str(data.get("password", ""))
