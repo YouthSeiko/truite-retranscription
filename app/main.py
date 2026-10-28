@@ -102,6 +102,7 @@ class TruiteRetranscriptionApp(_Root):
         self._bind_drop()
         self.after(100, self._poll_messages)
         self.after(400, self._auto_start_remote)
+        self.after(700, self._log_diagnostics)
 
     def _build_ui(self) -> None:
         self.grid_columnconfigure(0, weight=1)
@@ -919,6 +920,38 @@ class TruiteRetranscriptionApp(_Root):
         self.log_box.insert("end", f"[{stamp}] {message}\n")
         self.log_box.see("end")
         self.log_box.configure(state="disabled")
+        try:
+            target = PROJECT_ROOT / "journal.txt"
+            if target.exists() and target.stat().st_size > 1_000_000:
+                old = PROJECT_ROOT / "journal.old.txt"
+                if old.exists():
+                    old.unlink()
+                target.replace(old)
+            with target.open("a", encoding="utf-8") as handle:
+                handle.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}\n")
+        except OSError:
+            pass
+
+    def _log_diagnostics(self) -> None:
+        import relay
+
+        self._append_log(f"Racine des donnees : {PROJECT_ROOT}")
+        for path in relay._offer_paths():
+            self._append_log(f"offer.json : {path} -> {'trouve' if path.exists() else 'absent'}")
+        config = relay.load_relay()
+        if config:
+            self._append_log(f"Relais configure : {config.get('url', '')} ({config.get('label', '')})")
+        else:
+            self._append_log("Relais configure : aucun")
+        try:
+            from server import get_lan_ip, get_tailscale_ip
+
+            self._append_log(f"Adresse LAN : {get_lan_ip() or 'inconnue'}")
+            self._append_log(f"Adresse Tailscale : {get_tailscale_ip() or 'inactive'}")
+        except Exception as exc:
+            self._append_log(f"Diagnostic reseau impossible : {exc}")
+        self._append_log(f"Modele : {self.model_var.get()} - Langue : {self.lang_var.get()}")
+
 
     def copy_result(self) -> None:
         text = self.result_box.get("1.0", "end").strip()
