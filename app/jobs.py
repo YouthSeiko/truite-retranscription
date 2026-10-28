@@ -32,6 +32,9 @@ def _get_tailscale_ip():
         return get_tailscale_ip()
     except Exception:
         return None
+
+
+def _relay_is_local(url: str) -> bool:
     try:
         parsed = urlparse(url)
         host = (parsed.hostname or "").strip().lower()
