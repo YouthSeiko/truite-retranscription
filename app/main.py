@@ -483,7 +483,7 @@ class TruiteRetranscriptionApp(_Root):
         )
         self.current_job_id = submitted.id
 
-    def _auto_start_remote(self) -> None:
+    def _auto_start_remote(self, attempt: int = 1) -> None:
         from server import DEFAULT_PORT, RemoteServer, auto_start_enabled, password_defined
 
         if self.remote is not None or not password_defined() or not auto_start_enabled():
@@ -492,12 +492,16 @@ class TruiteRetranscriptionApp(_Root):
         try:
             server.start()
         except Exception as exc:
+            if attempt < 4 and "port" in str(exc).lower():
+                self.after(5000, lambda: self._auto_start_remote(attempt + 1))
+                return
             self._append_log(f"Mode distant : demarrage automatique impossible ({exc}).")
             return
         self._set_remote_active(server, automatic=True)
 
     def _set_remote_active(self, server, automatic: bool = False) -> None:
         self.remote = server
+        server.set_logger(lambda message: self.messages.put(("log", message)))
         self.remote_btn.configure(
             text="Distant : actif",
             fg_color=SUCCESS, hover_color="#25B491",

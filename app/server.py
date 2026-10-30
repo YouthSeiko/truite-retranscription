@@ -13,14 +13,21 @@ import time
 from contextlib import asynccontextmanager
 from hashlib import scrypt
 from pathlib import Path
+from typing import Callable, Optional
 
 import uvicorn
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 import accounts
-from jobs import DONE, Job, JobQueue, get_queue
-from transcriber import AUDIO_EXTENSIONS, LANGUAGES, MODEL_SIZES, PROJECT_ROOT
+from jobs import DONE, ERROR, Job, JobQueue, get_queue
+from transcriber import (
+    AUDIO_EXTENSIONS,
+    LANGUAGES,
+    MODEL_SIZES,
+    PROJECT_ROOT,
+    human_duration,
+)
 
 COOKIE = "truite_session"
 SESSION_LIFETIME = 7 * 24 * 3600
@@ -224,8 +231,22 @@ class RemoteServer:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._clients: dict[WebSocket, str] = {}
         self._subscribed = False
+        self._logged: set[str] = set()
+        self._log_callback: Optional[Callable[[str], None]] = None
         self._html = ""
         self._app = self._build_app()
+
+    def set_logger(self, callback: Optional[Callable[[str], None]]) -> None:
+        self._log_callback = callback
+
+    def _log_message(self, message: str) -> None:
+        callback = self._log_callback
+        if callback is None:
+            return
+        try:
+            callback(message)
+        except Exception:
+            pass
 
     def start(self) -> None:
         ensure_output_streams()
@@ -281,6 +302,21 @@ class RemoteServer:
         return payload
 
     def _on_job_change(self, job: Job) -> None:
+        if job.origin == "remote":
+            if job.status == "running" and f"{job.id}:debut" not in self._logged:
+                self._logged.add(f"{job.id}:debut")
+                self._log_message(f"Transcription distante : {job.filename}")
+            elif not job.active and f"{job.id}:fin" not in self._logged:
+                self._logged.add(f"{job.id}:fin")
+                self._logged.discard(f"{job.id}:debut")
+                if job.status == DONE:
+                    self._log_message(
+                        f"Termine (distant) : {job.filename} ({human_duration(job.duration)})"
+                    )
+                elif job.status == ERROR:
+                    last = (job.error or "").strip().splitlines()
+                    detail = last[-1][:200] if last else "erreur inconnue"
+                    self._log_message(f"Echec (distant) : {job.filename} - {detail}")
         if job.origin == "remote" and not job.active:
             for path in job.files:
                 try:

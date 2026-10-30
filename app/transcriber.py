@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Callable, Optional
 
 from faster_whisper import WhisperModel
@@ -48,6 +50,9 @@ AUDIO_EXTENSIONS = {
     ".aac", ".wma", ".mp4", ".mkv", ".webm", ".aiff",
 }
 
+SAMPLE_RATE = 16000
+CHUNK_SECONDS = 600
+
 
 @dataclass
 class Segment:
@@ -82,6 +87,67 @@ def human_duration(seconds: float) -> str:
     if h:
         return f"{h}h{m:02d}m{s:02d}s"
     return f"{m}m{s:02d}s"
+
+
+def probe_duration(path: Path) -> float:
+    try:
+        import av
+
+        with av.open(str(path)) as container:
+            if container.duration:
+                return float(container.duration) / 1_000_000.0
+            if container.streams.audio:
+                stream = container.streams.audio[0]
+                if stream.duration and stream.time_base:
+                    return float(stream.duration * stream.time_base)
+    except Exception:
+        pass
+    return 0.0
+
+
+def _slice_to_wav(source: Path, start: float, length: float, target: Path) -> float:
+    import av
+    import wave
+
+    resampler = av.AudioResampler(format="s16", layout="mono", rate=SAMPLE_RATE)
+    blocks: list[bytes] = []
+    total = 0
+    stop = start + length
+    with av.open(str(source)) as container:
+        stream = container.streams.audio[0]
+        if start > 0:
+            container.seek(int(start / float(stream.time_base)), stream=stream, backward=True)
+        done = False
+        for frame in container.decode(stream):
+            t0 = float(frame.pts * stream.time_base) if frame.pts is not None else 0.0
+            for converted in resampler.resample(frame):
+                data = converted.to_ndarray().reshape(-1)
+                duration = data.shape[0] / SAMPLE_RATE
+                if t0 + duration <= start:
+                    t0 += duration
+                    continue
+                if t0 < start:
+                    data = data[int(round((start - t0) * SAMPLE_RATE)) :]
+                    t0 = start
+                if t0 >= stop:
+                    done = True
+                    break
+                room = int(round((stop - t0) * SAMPLE_RATE))
+                if data.shape[0] > room:
+                    data = data[:room]
+                if data.shape[0]:
+                    blocks.append(data.tobytes())
+                    total += data.shape[0]
+                t0 += data.shape[0] / SAMPLE_RATE
+            if done:
+                break
+    with wave.open(str(target), "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(SAMPLE_RATE)
+        for item in blocks:
+            out.writeframes(item)
+    return total / SAMPLE_RATE
 
 
 class Transcriber:
@@ -132,19 +198,19 @@ class Transcriber:
             f"Details : {last_error}"
         )
 
-    def transcribe_file(
+    def _transcribe_window(
         self,
-        path: Path,
-        language: Optional[str] = None,
-        on_segment: Optional[Callable[[Segment], None]] = None,
-        on_progress: Optional[Callable[[float], None]] = None,
-        should_cancel: Optional[Callable[[], bool]] = None,
+        source: Path,
+        language: Optional[str],
+        on_segment: Optional[Callable[[Segment], None]],
+        on_progress: Optional[Callable[[float], None]],
+        should_cancel: Optional[Callable[[], bool]],
+        offset: float,
+        total: float,
     ) -> tuple[list[Segment], object]:
-        if self._model is None:
-            self.load()
         try:
             segments_iter, info = self._model.transcribe(
-                str(path),
+                str(source),
                 language=language,
                 beam_size=5,
                 vad_filter=True,
@@ -153,31 +219,99 @@ class Transcriber:
             )
         except Exception:
             segments_iter, info = self._model.transcribe(
-                str(path),
+                str(source),
                 language=language,
                 beam_size=5,
                 vad_filter=False,
                 condition_on_previous_text=False,
             )
-        duration = float(getattr(info, "duration", 0) or 0)
         results: list[Segment] = []
         for seg in segments_iter:
             if should_cancel and should_cancel():
                 break
             item = Segment(
-                start=float(seg.start),
-                end=float(seg.end),
+                start=offset + float(seg.start),
+                end=offset + float(seg.end),
                 text=(seg.text or "").strip(),
             )
             if item.text:
                 results.append(item)
             if on_segment:
                 on_segment(item)
+            if on_progress and total > 0:
+                on_progress(min(item.end / total, 1.0))
+        return results, info
+
+    def transcribe_file(
+        self,
+        path: Path,
+        language: Optional[str] = None,
+        on_segment: Optional[Callable[[Segment], None]] = None,
+        on_progress: Optional[Callable[[float], None]] = None,
+        should_cancel: Optional[Callable[[], bool]] = None,
+        on_status: Optional[Callable[[str], None]] = None,
+    ) -> tuple[list[Segment], object]:
+        if self._model is None:
+            self.load()
+        duration = probe_duration(path)
+        if duration <= CHUNK_SECONDS:
+            results, info = self._transcribe_window(
+                path, language, on_segment, on_progress, should_cancel, 0.0, duration
+            )
             if on_progress and duration > 0:
-                on_progress(min(item.end / duration, 1.0))
-        if on_progress and duration > 0:
+                on_progress(1.0)
+            return results, info
+
+        results: list[Segment] = []
+        failures: list[tuple[float, float, str]] = []
+        info = SimpleNamespace(duration=duration, language=language, language_probability=0.0)
+        temp_dir = Path(tempfile.mkdtemp(prefix="truite_audio_"))
+        start = 0.0
+        try:
+            while start < duration:
+                if should_cancel and should_cancel():
+                    break
+                length = min(float(CHUNK_SECONDS), duration - start)
+                chunk = temp_dir / f"passage_{int(start):06d}.wav"
+                if on_status:
+                    on_status(
+                        f"Passage {human_duration(start)} - {human_duration(start + length)} "
+                        f"sur {human_duration(duration)}..."
+                    )
+                try:
+                    _slice_to_wav(path, start, length, chunk)
+                    part, _ = self._transcribe_window(
+                        chunk, language, on_segment, on_progress, should_cancel, start, duration
+                    )
+                    results.extend(part)
+                except Exception as exc:
+                    failures.append((start, start + length, str(exc) or "erreur inconnue"))
+                finally:
+                    try:
+                        chunk.unlink()
+                    except OSError:
+                        pass
+                start += length
+                if on_progress:
+                    on_progress(min(start / duration, 1.0))
+        finally:
+            try:
+                temp_dir.rmdir()
+            except OSError:
+                pass
+
+        for begin, end, message in failures:
+            results.append(
+                Segment(
+                    start=begin,
+                    end=end,
+                    text=f"[Partie non transcrite - {human_duration(begin)} a {human_duration(end)} : {message}]",
+                )
+            )
+        if on_progress:
             on_progress(1.0)
         return results, info
+
 
 
 def _fmt_srt(t: float) -> str:

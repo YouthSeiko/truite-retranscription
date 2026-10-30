@@ -275,6 +275,7 @@ class JobQueue:
                 language=job.language,
                 on_progress=on_progress,
                 should_cancel=lambda: job.cancel_requested,
+                on_status=lambda message: self._emit("status", message, job),
             )
             text = "\n".join(seg.text for seg in segments if seg.text).strip()
             body = text if text else "(aucune parole detectee)"
@@ -292,7 +293,20 @@ class JobQueue:
 
             duration = float(getattr(info, "duration", 0) or 0)
             job.duration += duration
-            self._emit("log", f"Termine : {path.name} ({human_duration(duration)})", job)
+            last_end = segments[-1].end if segments else 0.0
+            self._emit(
+                "log",
+                f"Termine : {path.name} ({human_duration(duration)}, "
+                f"dernier segment a {human_duration(last_end)})",
+                job,
+            )
+            if duration > 0 and last_end < duration - 120:
+                self._emit(
+                    "log",
+                    f"Attention : la transcription s'arrete a {human_duration(last_end)} "
+                    f"alors que le fichier dure {human_duration(duration)}.",
+                    job,
+                )
 
         if job.cancel_requested:
             job.status = CANCELLED

@@ -1,0 +1,68 @@
+==============================================================
+  TUTO - "Connexion sur Gregre"
+  Transcrire avec les ressources du PC "gregre"
+==============================================================
+
+C'EST QUOI ?
+-----------
+Ce PC n'a pas besoin de la grosse intelligence artificielle.
+Quand vous cliquez sur le bouton "Connexion sur Gregre", tous vos
+fichiers audio sont envoyes au PC "gregre" (qui a le modele IA) et
+le texte revient automatiquement chez vous.
+
+
+PREALABLES (une seule fois)
+---------------------------
+1. Tailscale doit etre installe et connecte sur CE PC
+   (meme compte/reseau que gregre).
+   Verifier : ouvrir un terminal et taper  tailscale status
+2. Sur le PC "gregre", l'application doit etre ouverte avec le
+   "Mode distant" actif (il demarre tout seul a l'ouverture).
+
+
+DEMARRAGE
+---------
+1. Ouvrir le dossier de la cle (celle qui contient ce fichier).
+2. Double-cliquer sur  "Creer raccourci bureau.cmd"
+   -> un raccourci "Truite Retranscription" apparait sur le bureau.
+   (Si la lettre du lecteur change, relancer ce fichier.)
+3. Utiliser le raccourci du bureau pour lancer l'application.
+   Aucune installation, aucun modele a telecharger.
+
+Alternative sans raccourci : TruiteRetranscription\TruiteRetranscription.exe
+
+
+UTILISATION
+-----------
+1. Dans la fenetre, cliquer sur le bouton "Connexion sur Gregre"
+   (en haut a droite). Si tout va bien il devient vert :
+   "Gregre : actif - X / 300 min".
+2. Glisser-deposer un fichier audio, choisir langue si besoin,
+   puis "Lancer la retranscription".
+3. Le resultat et le fichier .txt s'enregistrent sur CE PC.
+
+
+QUOTA
+-----
+- Le compte "gregre" a un quota de 300 minutes, regenere 1 min / 6 min.
+- Visible directement dans l'app (bouton + bas de fenetre).
+- Si epuise, il faudra patienter.
+
+
+SI CA NE MARCHE PAS
+-------------------
+Un fichier  journal.txt  est cree a cote du dossier de l'application
+(racine de la cle, ou de D:\ si l'app est dans D:\TruiteRetranscription).
+Il contient tout : chemins, relais, adresses, modele et erreurs.
+Envoyez-le pour diagnostic.
+
+- "Serveur distant injoignable" :
+  1. Tailscale connecte ?
+  2. L'app sur le PC gregre est-elle ouverte (Mode distant actif) ?
+  3. Verifier l'adresse dans offer.json (http://100.83.209.66:8722)
+- "Le port 8722 est deja utilise" : une autre instance de l'app
+  tourne deja. Fermer les autres fenetres.
+- Bouton "Gregre" absent : lancer avec le raccourci ci-dessus, et
+  verifier que offer.json est bien dans le dossier de la cle.
+- Pour se deconnecter : cliquer sur le bouton vert "Gregre : actif..."
+  puis retirer.
