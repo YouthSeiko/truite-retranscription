@@ -68,31 +68,21 @@ La desinstallation retire l'application, les raccourcis et le
 journal. Vos transcriptions deja enregistrees ne sont pas touchees.
 
 
-UTILISATION SANS INSTALLATION (cle USB)
----------------------------------------
-Si vous ne voulez rien installer :
-1. Ouvrir le dossier "TruiteRetranscription" de la cle.
-2. Lancer "TruiteRetranscription.exe" directement depuis la cle.
-La cle doit rester branchee pendant l'utilisation.
-Le fichier "Creer raccourci bureau.cmd" cree un raccourci vers la
-cle (il ne fonctionne que si la cle est branchee).
-
-
 SI CA NE MARCHE PAS
 -------------------
 Un fichier  journal.txt  est cree a la racine de l'application :
-- installation : AppData\Local\Programs\TruiteRetranscription\journal.txt
-- version cle USB : racine de la cle.
+AppData\Local\Programs\TruiteRetranscription\journal.txt
 Il contient tout : chemins, relais, adresses, modele et erreurs.
 Envoyez-le pour diagnostic.
 
 - "Serveur distant injoignable" :
-  1. Tailscale connecte ?
+  1. Tailscale connecte ? (tester : tailscale status)
   2. L'app sur le PC gregre est-elle ouverte (Mode distant actif) ?
-  3. Verifier l'adresse dans offer.json (http://100.83.209.66:8722)
+  3. Verifier l'adresse dans offer.json (installe avec l'app,
+     http://100.83.209.66:8722)
 - "Le port 8722 est deja utilise" : une autre instance de l'app
   tourne deja. Fermer les autres fenetres.
-- Bouton "Gregre" absent : l'application installee doit contenir
-  offer.json (fourni par l'installateur). Reinstaller si besoin.
+- Bouton "Gregre" absent : reinstaller avec l'installateur de la cle
+  (offer.json est fourni par l'installateur).
 - Pour se deconnecter : cliquer sur le bouton vert "Gregre : actif..."
   puis retirer.
