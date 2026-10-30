@@ -38,5 +38,5 @@ if (-not (Test-Path $setup)) {
 $size = [math]::Round((Get-Item $setup).Length / 1MB, 1)
 Write-Host ""
 Write-Host "  Installateur OK : $setup ($size Mo)" -ForegroundColor Green
-Write-Host "  Copier ce fichier sur la cle USB, a cote de offer.json." -ForegroundColor Gray
+Write-Host "  Copier ce fichier sur la cle USB." -ForegroundColor Gray
 Write-Host ""

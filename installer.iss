@@ -2,7 +2,7 @@
 ; Compilation : ISCC.exe installer.iss
 
 #define MyAppName "Truite Retranscription"
-#define MyAppVersion "1.3.0"
+#define MyAppVersion "1.3.1"
 #define MyAppPublisher "YouthSeiko"
 #define MyAppExeName "TruiteRetranscription.exe"
 #define MyAppId "{{8C3B0F5E-2E4A-4B7F-9E51-2C7D9A6B4F10}"
@@ -33,7 +33,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ShowLanguageDialog=no
 CloseApplications=yes
 RestartApplications=no
-VersionInfoVersion=1.3.0.0
+VersionInfoVersion=1.3.1.0
 VersionInfoProductName={#MyAppName}
 VersionInfoDescription=Installateur de {#MyAppName}
 VersionInfoCompany={#MyAppPublisher}
