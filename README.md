@@ -25,6 +25,12 @@ Glissez un fichier MP3, obtenez un fichier TXT/SRT/VTT. Aucun envoi sur Internet
 
 Sinon, double-cliquez simplement sur `TruiteRetranscription\TruiteRetranscription.exe` : le modèle se téléchargera automatiquement à la première transcription.
 
+### Installeur Windows (sans dossier sur le Bureau)
+
+**`Installateur Truite Retranscription.exe`** installe l'application dans votre profil (`%LOCALAPPDATA%\Programs\TruiteRetranscription`), sans droits administrateur : seul un raccourci est ajouté sur le Bureau, et l'application apparaît dans « Applications installées » pour la désinstallation. La version de l'installeur livrée sur la clé USB contient `offer.json` (bouton « Connexion sur Gregre »).
+
+Pour reconstruire cet installeur : `make_installer.ps1` (nécessite [Inno Setup 6](https://jrsoftware.org/isdl.php)).
+
 ### Depuis les sources
 
 Prérequis : [Python 3.10+](https://www.python.org/downloads/) avec « Add python.exe to PATH » coché.

@@ -1,5 +1,5 @@
 ==============================================================
-  TUTO - "Connexion sur Gregre"
+  TUTO - Truite Retranscription
   Transcrire avec les ressources du PC "gregre"
 ==============================================================
 
@@ -20,16 +20,23 @@ PREALABLES (une seule fois)
    "Mode distant" actif (il demarre tout seul a l'ouverture).
 
 
-DEMARRAGE
----------
-1. Ouvrir le dossier de la cle (celle qui contient ce fichier).
-2. Double-cliquer sur  "Creer raccourci bureau.cmd"
-   -> un raccourci "Truite Retranscription" apparait sur le bureau.
-   (Si la lettre du lecteur change, relancer ce fichier.)
-3. Utiliser le raccourci du bureau pour lancer l'application.
-   Aucune installation, aucun modele a telecharger.
+INSTALLATION (recommandee)
+--------------------------
+1. Brancher la cle USB et ouvrir son contenu.
+2. Double-cliquer sur
+      "Installateur Truite Retranscription.exe"
+3. Cliquer sur "Suivant" puis "Installer". A la fin, laisser
+   coche "Lancer Truite Retranscription" et cliquer sur "Terminer".
 
-Alternative sans raccourci : TruiteRetranscription\TruiteRetranscription.exe
+Resultat :
+- une icone "Truite Retranscription" apparait sur le Bureau ;
+- aucun dossier n'est cree sur le Bureau ;
+- l'application est installee dans votre profil utilisateur
+  (AppData\Local\Programs\TruiteRetranscription), sans droits
+  administrateur et sans desinstallation de Python.
+- la cle USB n'est plus necessaire : vous pouvez la retirer.
+
+Par la suite, lancer simplement l'icone du Bureau.
 
 
 UTILISATION
@@ -39,7 +46,10 @@ UTILISATION
    "Gregre : actif - X / 300 min".
 2. Glisser-deposer un fichier audio, choisir langue si besoin,
    puis "Lancer la retranscription".
-3. Le resultat et le fichier .txt s'enregistrent sur CE PC.
+3. Le resultat et le fichier .txt s'enregistrent automatiquement
+   sur CE PC, a cote du fichier audio (dossier "transcriptions").
+   Les textes recus de gregre sont aussi gardes dans
+   AppData\Local\Programs\TruiteRetranscription\transcriptions\remote
 
 
 QUOTA
@@ -49,10 +59,30 @@ QUOTA
 - Si epuise, il faudra patienter.
 
 
+DESINSTALLER
+------------
+Parametres > Applications > Applications installees >
+"Truite Retranscription" > Desinstaller.
+
+La desinstallation retire l'application, les raccourcis et le
+journal. Vos transcriptions deja enregistrees ne sont pas touchees.
+
+
+UTILISATION SANS INSTALLATION (cle USB)
+---------------------------------------
+Si vous ne voulez rien installer :
+1. Ouvrir le dossier "TruiteRetranscription" de la cle.
+2. Lancer "TruiteRetranscription.exe" directement depuis la cle.
+La cle doit rester branchee pendant l'utilisation.
+Le fichier "Creer raccourci bureau.cmd" cree un raccourci vers la
+cle (il ne fonctionne que si la cle est branchee).
+
+
 SI CA NE MARCHE PAS
 -------------------
-Un fichier  journal.txt  est cree a cote du dossier de l'application
-(racine de la cle, ou de D:\ si l'app est dans D:\TruiteRetranscription).
+Un fichier  journal.txt  est cree a la racine de l'application :
+- installation : AppData\Local\Programs\TruiteRetranscription\journal.txt
+- version cle USB : racine de la cle.
 Il contient tout : chemins, relais, adresses, modele et erreurs.
 Envoyez-le pour diagnostic.
 
@@ -62,7 +92,7 @@ Envoyez-le pour diagnostic.
   3. Verifier l'adresse dans offer.json (http://100.83.209.66:8722)
 - "Le port 8722 est deja utilise" : une autre instance de l'app
   tourne deja. Fermer les autres fenetres.
-- Bouton "Gregre" absent : lancer avec le raccourci ci-dessus, et
-  verifier que offer.json est bien dans le dossier de la cle.
+- Bouton "Gregre" absent : l'application installee doit contenir
+  offer.json (fourni par l'installateur). Reinstaller si besoin.
 - Pour se deconnecter : cliquer sur le bouton vert "Gregre : actif..."
   puis retirer.
