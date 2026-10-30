@@ -6,6 +6,7 @@ Glissez un fichier MP3, obtenez un fichier TXT/SRT/VTT. Aucun envoi sur Internet
 ## Fonctionnalités
 
 - **Glisser-déposer** de fichiers audio (MP3, WAV, M4A, FLAC, OGG, MP4...)
+- **Fichiers longs (1 h et plus)** : découpés en passages de 10 minutes, puis texte recollé dans l'ordre
 - Transcription hors-ligne via l'IA **faster-whisper** (modèle « small » préchargé)
 - Détection automatique de la langue ou choix forcé (fr, en, es, de, it...)
 - Plusieurs modèles : `tiny` (ultra rapide) → `large-v3` (très précis)
