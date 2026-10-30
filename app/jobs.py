@@ -307,6 +307,14 @@ class JobQueue:
                     f"alors que le fichier dure {human_duration(duration)}.",
                     job,
                 )
+            missing = sum(1 for seg in segments if seg.text.startswith("[Partie non transcrite"))
+            if missing:
+                self._emit(
+                    "log",
+                    f"Attention : {missing} passage(s) du fichier ont un audio illisible "
+                    "et n'ont pas pu etre transcrits.",
+                    job,
+                )
 
         if job.cancel_requested:
             job.status = CANCELLED

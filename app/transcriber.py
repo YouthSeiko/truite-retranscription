@@ -52,6 +52,8 @@ AUDIO_EXTENSIONS = {
 
 SAMPLE_RATE = 16000
 CHUNK_SECONDS = 600
+MIN_SPLIT_SECONDS = 60
+MAX_SPLIT_DEPTH = 4
 
 
 @dataclass
@@ -105,49 +107,82 @@ def probe_duration(path: Path) -> float:
     return 0.0
 
 
-def _slice_to_wav(source: Path, start: float, length: float, target: Path) -> float:
+def _slice_to_wav(
+    source: Path,
+    start: float,
+    length: float,
+    target: Path,
+    sequential: bool = False,
+) -> tuple[float, int]:
     import av
     import wave
 
     resampler = av.AudioResampler(format="s16", layout="mono", rate=SAMPLE_RATE)
     blocks: list[bytes] = []
     total = 0
+    skipped = 0
     stop = start + length
-    with av.open(str(source)) as container:
+    fallback = 0.0 if sequential else start
+    try:
+        container = av.open(str(source), options={"fflags": "+discardcorrupt"})
+    except Exception:
+        container = av.open(str(source))
+    try:
         stream = container.streams.audio[0]
-        if start > 0:
-            container.seek(int(start / float(stream.time_base)), stream=stream, backward=True)
+        if start > 0 and not sequential:
+            warmup = max(0.0, start - 2.0)
+            container.seek(int(warmup / float(stream.time_base)), stream=stream, backward=True)
         done = False
-        for frame in container.decode(stream):
-            t0 = float(frame.pts * stream.time_base) if frame.pts is not None else 0.0
-            for converted in resampler.resample(frame):
-                data = converted.to_ndarray().reshape(-1)
-                duration = data.shape[0] / SAMPLE_RATE
-                if t0 + duration <= start:
-                    t0 += duration
-                    continue
-                if t0 < start:
-                    data = data[int(round((start - t0) * SAMPLE_RATE)) :]
-                    t0 = start
-                if t0 >= stop:
-                    done = True
-                    break
-                room = int(round((stop - t0) * SAMPLE_RATE))
-                if data.shape[0] > room:
-                    data = data[:room]
-                if data.shape[0]:
-                    blocks.append(data.tobytes())
-                    total += data.shape[0]
-                t0 += data.shape[0] / SAMPLE_RATE
+        for packet in container.demux(stream):
             if done:
                 break
+            if packet.dts is None:
+                continue
+            try:
+                frames = packet.decode()
+            except Exception:
+                skipped += 1
+                continue
+            for frame in frames:
+                rate = float(frame.sample_rate or SAMPLE_RATE)
+                if frame.pts is not None:
+                    frame_start = float(frame.pts * stream.time_base)
+                else:
+                    frame_start = fallback
+                if rate > 0 and frame.samples:
+                    fallback = frame_start + frame.samples / rate
+                for converted in resampler.resample(frame):
+                    data = converted.to_ndarray().reshape(-1)
+                    size = int(data.shape[0])
+                    if size <= 0:
+                        continue
+                    if frame_start + size / SAMPLE_RATE <= start:
+                        continue
+                    if frame_start >= stop:
+                        done = True
+                        break
+                    if frame_start < start:
+                        data = data[int(round((start - frame_start) * SAMPLE_RATE)) :]
+                    room = int(round((stop - max(frame_start, start)) * SAMPLE_RATE))
+                    if room <= 0:
+                        done = True
+                        break
+                    if data.shape[0] > room:
+                        data = data[:room]
+                    if data.shape[0]:
+                        blocks.append(data.tobytes())
+                        total += int(data.shape[0])
+                if done:
+                    break
+    finally:
+        container.close()
     with wave.open(str(target), "wb") as out:
         out.setnchannels(1)
         out.setsampwidth(2)
         out.setframerate(SAMPLE_RATE)
         for item in blocks:
             out.writeframes(item)
-    return total / SAMPLE_RATE
+    return total / SAMPLE_RATE, skipped
 
 
 class Transcriber:
@@ -242,6 +277,74 @@ class Transcriber:
                 on_progress(min(item.end / total, 1.0))
         return results, info
 
+    def _transcribe_part(
+        self,
+        source: Path,
+        temp_dir: Path,
+        start: float,
+        end: float,
+        language: Optional[str],
+        on_segment: Optional[Callable[[Segment], None]],
+        on_progress: Optional[Callable[[float], None]],
+        should_cancel: Optional[Callable[[], bool]],
+        total: float,
+        on_status: Optional[Callable[[str], None]],
+        depth: int = 0,
+    ) -> list[Segment]:
+        length = end - start
+        if length <= 0.5:
+            return []
+        chunk = temp_dir / f"passage_{int(start * 10):08d}_{int(length * 10):08d}.wav"
+        last_error = "erreur inconnue"
+        for sequential in (False, True):
+            if should_cancel and should_cancel():
+                return []
+            try:
+                written, skipped = _slice_to_wav(
+                    source, start, length, chunk, sequential=sequential
+                )
+                if skipped and on_status:
+                    on_status(
+                        f"Passage {human_duration(start)} - {human_duration(end)} : "
+                        f"{skipped} paquets audio illisibles ignores."
+                    )
+                if written <= 0.2:
+                    raise RuntimeError("aucun echantillon audio lisible")
+                part, _ = self._transcribe_window(
+                    chunk, language, on_segment, on_progress, should_cancel, start, total
+                )
+                return part
+            except Exception as exc:
+                last_error = str(exc) or "erreur inconnue"
+            finally:
+                try:
+                    chunk.unlink()
+                except OSError:
+                    pass
+        if length > MIN_SPLIT_SECONDS and depth < MAX_SPLIT_DEPTH:
+            middle = start + length / 2.0
+            return self._transcribe_part(
+                source, temp_dir, start, middle, language, on_segment, on_progress,
+                should_cancel, total, on_status, depth + 1,
+            ) + self._transcribe_part(
+                source, temp_dir, middle, end, language, on_segment, on_progress,
+                should_cancel, total, on_status, depth + 1,
+            )
+        if on_status:
+            on_status(
+                f"Passage {human_duration(start)} - {human_duration(end)} non transcrit : {last_error}"
+            )
+        return [
+            Segment(
+                start=start,
+                end=end,
+                text=(
+                    f"[Partie non transcrite - {human_duration(start)} a {human_duration(end)} : "
+                    "audio illisible]"
+                ),
+            )
+        ]
+
     def transcribe_file(
         self,
         path: Path,
@@ -255,15 +358,45 @@ class Transcriber:
             self.load()
         duration = probe_duration(path)
         if duration <= CHUNK_SECONDS:
-            results, info = self._transcribe_window(
-                path, language, on_segment, on_progress, should_cancel, 0.0, duration
-            )
-            if on_progress and duration > 0:
-                on_progress(1.0)
-            return results, info
+            try:
+                results, info = self._transcribe_window(
+                    path, language, on_segment, on_progress, should_cancel, 0.0, duration
+                )
+                if on_progress and duration > 0:
+                    on_progress(1.0)
+                return results, info
+            except Exception:
+                if on_status:
+                    on_status("Fichier audio partiellement illisible : nouvelle tentative...")
+                temp_dir = Path(tempfile.mkdtemp(prefix="truite_audio_"))
+                chunk = temp_dir / "passage.wav"
+                try:
+                    written, skipped = _slice_to_wav(
+                        path, 0.0, max(duration, 86400.0), chunk, sequential=True
+                    )
+                    if skipped and on_status:
+                        on_status(f"{skipped} paquets audio illisibles ignores.")
+                    if written <= 0.2:
+                        raise RuntimeError("aucun echantillon audio lisible")
+                    results, info = self._transcribe_window(
+                        chunk, language, on_segment, on_progress, should_cancel, 0.0, written
+                    )
+                    if on_progress:
+                        on_progress(1.0)
+                    return results, SimpleNamespace(
+                        duration=written, language=language, language_probability=0.0
+                    )
+                finally:
+                    try:
+                        chunk.unlink()
+                    except OSError:
+                        pass
+                    try:
+                        temp_dir.rmdir()
+                    except OSError:
+                        pass
 
         results: list[Segment] = []
-        failures: list[tuple[float, float, str]] = []
         info = SimpleNamespace(duration=duration, language=language, language_probability=0.0)
         temp_dir = Path(tempfile.mkdtemp(prefix="truite_audio_"))
         start = 0.0
@@ -271,27 +404,18 @@ class Transcriber:
             while start < duration:
                 if should_cancel and should_cancel():
                     break
-                length = min(float(CHUNK_SECONDS), duration - start)
-                chunk = temp_dir / f"passage_{int(start):06d}.wav"
+                end = min(start + float(CHUNK_SECONDS), duration)
                 if on_status:
                     on_status(
-                        f"Passage {human_duration(start)} - {human_duration(start + length)} "
+                        f"Passage {human_duration(start)} - {human_duration(end)} "
                         f"sur {human_duration(duration)}..."
                     )
-                try:
-                    _slice_to_wav(path, start, length, chunk)
-                    part, _ = self._transcribe_window(
-                        chunk, language, on_segment, on_progress, should_cancel, start, duration
-                    )
-                    results.extend(part)
-                except Exception as exc:
-                    failures.append((start, start + length, str(exc) or "erreur inconnue"))
-                finally:
-                    try:
-                        chunk.unlink()
-                    except OSError:
-                        pass
-                start += length
+                part = self._transcribe_part(
+                    path, temp_dir, start, end, language, on_segment, on_progress,
+                    should_cancel, duration, on_status,
+                )
+                results.extend(part)
+                start = end
                 if on_progress:
                     on_progress(min(start / duration, 1.0))
         finally:
@@ -300,14 +424,6 @@ class Transcriber:
             except OSError:
                 pass
 
-        for begin, end, message in failures:
-            results.append(
-                Segment(
-                    start=begin,
-                    end=end,
-                    text=f"[Partie non transcrite - {human_duration(begin)} a {human_duration(end)} : {message}]",
-                )
-            )
         if on_progress:
             on_progress(1.0)
         return results, info
